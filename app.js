@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.5.2';
+const VERSION = 'v0.5.3';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -905,6 +905,10 @@ function bind() {
     if (state.car.deliveryDate && currentView !== 'home') show('settings'); else renderSettings();
   });
   $('#sync-now').addEventListener('click', async () => { await Sync.syncNow({ announce: true }); renderSettings(); });
+  $('#sync-copytoken').addEventListener('click', async () => {
+    const c = Sync.cfg(); if (!c?.token) return toast('尚未連線');
+    await copyText(c.token); toast('已複製 token,貼到另一台裝置的「雲端同步」');
+  });
   $('#sync-rekey').addEventListener('click', () => {
     $('#sync-on').style.display = 'none'; $('#sync-form').style.display = '';
     $('#sync-repo').value = Sync.cfg().repo; $('#sync-token').value = ''; $('#sync-token').focus();

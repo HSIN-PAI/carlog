@@ -277,7 +277,8 @@
       </div>
       <div id="sync-on" style="display:none">
         <div class="note" style="margin-top:0">已連線:<b id="sync-repo-label"></b></div>
-        <div class="btn-row"><button class="ghost" id="sync-now">立即同步</button><button class="ghost" id="sync-rekey">更換 token</button></div>
+        <div class="btn-row"><button class="ghost" id="sync-now">立即同步</button><button class="ghost" id="sync-copytoken">複製 token</button><button class="ghost" id="sync-rekey">更換 token</button></div>
+        <p class="note" style="margin:6px 0 0">要在另一台裝置連線時,按「複製 token」貼過去即可,同一把可以多台共用。</p>
         <div class="btn-row"><button class="danger" id="sync-disconnect">中斷同步</button></div>
       </div>
       <div class="note" id="sync-status"></div>
@@ -365,6 +366,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=0.5.2"></script>
+<script src="app.js?v=0.5.3"></script>
 </body>
 </html>
