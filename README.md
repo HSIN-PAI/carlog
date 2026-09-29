@@ -32,9 +32,12 @@
 總覽右上「分享」→ 選含車價 / 不含車價 → 手機會跳系統分享選單(LINE 等),電腦則複製連結。
 朋友點開看到唯讀摘要頁:每日持有成本、遞減曲線、三類型小計、分類占比、每月支出。
 
-- 統計數字直接壓在網址的 `#s=…` 裡(base64url 的 JSON,約 1.5 KB),**不經過任何伺服器**,朋友不需要帳號或 token
-- 只帶彙總:分類合計、月合計、曲線取樣 60 點;**單筆明細與備註不會出去**
-- 連結是分享當下的快照,之後記的新資料不會更新到舊連結,要再分享一次
+- **短連結(預設)**:摘要存到公開 repo `HSIN-PAI/carlog-shares` 的 `shares/<id>.json`,連結長 `#id=<id>`,LINE 貼得下。
+  需要 token 的 Repository access 同時勾 `carlog-data` 和 `carlog-shares`。id 是摘要內容的雜湊,同一份快照只會產生一個檔
+- **長連結(退路)**:存不上去(沒連線、token 沒權限)就把摘要用 deflate 壓縮後放在網址 `#z=…`,不經過任何伺服器;
+  LINE 對太長的網址只會把前半段變成連結,所以能用短連結就用短連結
+- 只帶彙總:分類合計、有支出的月份合計、曲線取樣 60 點;**單筆明細與備註不會出去**
+- 連結是分享當下的快照,之後記的新資料不會更新到舊連結,要再分享一次;不想再讓某個連結被看到,把 `carlog-shares` 裡對應的檔刪掉即可
 
 ## 支出分類
 
@@ -75,7 +78,7 @@
 2. 產生 token:GitHub 右上頭像 → **Settings** → 左側最下方 **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**
    - Token name:隨便,例如 `carlog`
    - Expiration:選最長(到期後 App 會顯示「token 無效或已過期」,再產生一把貼上即可)
-   - Repository access:**Only select repositories** → 只勾 `carlog-data`
+   - Repository access:**Only select repositories** → 勾 `carlog-data`(資料)和 `carlog-shares`(分享短連結,公開 repo)
    - Permissions → Repository permissions → **Contents:Read and write**(其他都不用)
    - Generate,把 `github_pat_…` 複製起來(只會顯示一次)
 3. 打開 App → **設定 → 雲端同步** → 填 repo(`帳號/carlog-data`)與 token → **連線並同步**

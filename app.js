@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.4.3';
+const VERSION = 'v0.5.0';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -550,6 +550,12 @@ const Sync = (() => {
 
   function b64enc(str) { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); }
   function b64dec(b64) { const bin = atob(b64.replace(/\s/g, '')); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
+  function gh(path, opts = {}) {
+    return fetch(`https://api.github.com/${path}`, {
+      ...opts, cache: 'no-store',
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) },
+    });
+  }
   function api(path, opts = {}) {
     return fetch(`https://api.github.com/repos/${cfg.repo}/${path}`, {
       ...opts, cache: 'no-store',
@@ -647,14 +653,26 @@ const Sync = (() => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && enabled()) syncNow(); });
   window.addEventListener('online', () => { if (enabled() && dirty) syncNow(); });
 
-  return { enabled, cfg: () => cfg, statusText, icon, syncNow, schedulePush, connect, disconnect };
+  return { enabled, cfg: () => cfg, statusText, icon, syncNow, schedulePush, connect, disconnect, gh };
 })();
 
 /* ---------- 分享(資料壓在網址 hash,無伺服器) ---------- */
 const b64u = {
-  enc: str => { const b = new TextEncoder().encode(str); let bin = ''; for (const c of b) bin += String.fromCharCode(c); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
-  dec: b64 => { const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/')); const bytes = Uint8Array.from(bin, c => c.charCodeAt(0)); return new TextDecoder().decode(bytes); },
+  encBytes: bytes => { let bin = ''; for (const c of bytes) bin += String.fromCharCode(c); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  decBytes: b64 => { const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(bin, c => c.charCodeAt(0)); },
+  enc: str => b64u.encBytes(new TextEncoder().encode(str)),
+  dec: b64 => new TextDecoder().decode(b64u.decBytes(b64)),
 };
+async function deflate(str) {
+  const cs = new CompressionStream('deflate-raw');
+  const w = cs.writable.getWriter(); w.write(new TextEncoder().encode(str)); w.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+async function inflate(bytes) {
+  const ds = new DecompressionStream('deflate-raw');
+  const w = ds.writable.getWriter(); w.write(bytes); w.close();
+  return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());
+}
 function sharePayload(includePrice) {
   const series = dailySeries(includePrice);
   const n = series.length;
@@ -663,16 +681,44 @@ function sharePayload(includePrice) {
   for (let i = 0; i < n; i += step) idx.push(i);
   if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
   const cats = categoryTotals(includePrice, 'all').map(c => [c.id, Math.round(c.total)]);
-  const months = monthlyTotals(includePrice).map(m => [m.key, Math.round(m.total)]);
+  const months = monthlyTotals(includePrice).filter(m => m.total > 0).map(m => [m.key, Math.round(m.total)]);
   return {
     v: 1, n: state.car.name, d: state.car.deliveryDate, t: todayStr(), p: includePrice ? 1 : 0,
     days: n, total: Math.round(sum(expensesInScope(includePrice))), daily: Math.round(n ? series[n - 1] : 0),
     s: idx.map(i => [i, Math.round(series[i])]), c: cats, m: months,
   };
 }
-function shareUrl(includePrice) { return `${location.origin}${location.pathname}#s=${b64u.enc(JSON.stringify(sharePayload(includePrice)))}`; }
-function shareText(includePrice) { const p = sharePayload(includePrice); return `我的 ${p.n} 開了 ${p.days} 天,每天持有成本 ${fmt(p.daily)} 元${includePrice ? '(含車價)' : '(不含車價)'},累計 ${fmt(p.total)} 元。`; }
-let shareInc = true;
+const SHARE_REPO = 'HSIN-PAI/carlog-shares';   // 公開 repo,存分享摘要;短連結 #id=<檔名>
+async function shareId(json) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(json));
+  return [...new Uint8Array(buf)].slice(0, 5).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+let shareFallbackReason = '';
+async function publishShare(json) {
+  shareFallbackReason = '';
+  if (!Sync.enabled()) { shareFallbackReason = '尚未連線雲端同步'; return null; }
+  try {
+    const id = await shareId(json);
+    const r = await Sync.gh(`repos/${SHARE_REPO}/contents/shares/${id}.json`, {
+      method: 'PUT', body: JSON.stringify({ message: `share ${id}`, content: b64u.enc(json), branch: 'main' }),
+    });
+    if (r.ok || r.status === 422) return id;   // 422:同一份快照已存在,直接沿用
+    shareFallbackReason = (r.status === 403 || r.status === 404) ? `token 沒有 ${SHARE_REPO} 的寫入權限` : `GitHub ${r.status}`;
+  } catch (e) { shareFallbackReason = e.message; }
+  return null;
+}
+async function shareUrl(includePrice) {
+  const json = JSON.stringify(sharePayload(includePrice));
+  const base = `${location.origin}${location.pathname}`;
+  const id = await publishShare(json);
+  if (id) return `${base}#id=${id}`;
+  if ('CompressionStream' in window) {
+    try { return `${base}#z=${b64u.encBytes(await deflate(json))}`; } catch (e) { console.warn('deflate failed', e); }
+  }
+  return `${base}#s=${b64u.enc(json)}`;
+}
+function shareText(includePrice) { const p = sharePayload(includePrice); return `我的 ${p.n} 開了 ${p.days} 天,累計花費 ${fmt(p.total)} 元,平均每天 ${fmt(p.daily)} 元${includePrice ? '(含車價)' : '(不含車價)'}。`; }
+let shareInc = true, sharePrep = null;
 function openShare() {
   shareInc = state.settings.includePrice;
   renderSharePreview();
@@ -681,9 +727,15 @@ function openShare() {
 function renderSharePreview() {
   setSeg('seg-share', shareInc ? 'all' : 'ops');
   $('#share-preview').textContent = shareText(shareInc);
+  sharePrep = shareUrl(shareInc);   // 先在背景做好短連結,按分享時不用等
+}
+async function preparedUrl() {
+  const url = await (sharePrep || shareUrl(shareInc));
+  if (shareFallbackReason) toast(`短連結建立失敗(${shareFallbackReason}),改用長連結`);
+  return url;
 }
 async function doShare() {
-  const url = shareUrl(shareInc), text = shareText(shareInc);
+  const url = await preparedUrl(), text = shareText(shareInc);
   if (navigator.share) {
     try { await navigator.share({ title: `${state.car.name} 持有成本`, text, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
   }
@@ -716,12 +768,28 @@ function renderShareView(p) {
   for (const [id, v] of cats) g[CAT[id].group] += v;
   $('#sh-groups').innerHTML = Object.entries(GROUPS).map(([k, v]) => `<div class="stat"><div class="k">${v}</div><div class="v">${fmtWan(g[k])}</div></div>`).join('');
   const cur = monthKey(p.t);
-  renderBarChart($('#chart-sh-month'), p.m.map(([k, v]) => ({ label: `${+k.slice(5)}月`, value: v, hot: k === cur })));
+  const mm = Object.fromEntries(p.m);
+  const [ty, tmo] = p.t.split('-').map(Number);
+  const axis = [];
+  for (let i = 11; i >= 0; i--) { const d = new Date(ty, tmo - 1 - i, 1); axis.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`); }
+  renderBarChart($('#chart-sh-month'), axis.map(k => ({ label: `${+k.slice(5)}月`, value: mm[k] || 0, hot: k === cur })));
+  window.scrollTo(0, 0);
 }
-function tryShareView() {
-  const m = location.hash.match(/^#s=(.+)$/);
+function isShareHash() { return /^#(s|z|id)=/.test(location.hash); }
+async function tryShareView() {
+  const m = location.hash.match(/^#(s|z|id)=(.+)$/);
   if (!m) return false;
-  try { const p = JSON.parse(b64u.dec(m[1])); if (p && p.v === 1 && p.d) { renderShareView(p); return true; } } catch (e) { console.warn('share decode failed', e); }
+  try {
+    let json;
+    if (m[1] === 'id') {
+      if (!/^[0-9a-f]{10}$/.test(m[2])) throw new Error('bad id');
+      const r = await fetch(`https://raw.githubusercontent.com/${SHARE_REPO}/main/shares/${m[2]}.json`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`fetch ${r.status}`);
+      json = await r.text();
+    } else json = m[1] === 'z' ? await inflate(b64u.decBytes(m[2])) : b64u.dec(m[2]);
+    const p = JSON.parse(json);
+    if (p && p.v === 1 && p.d) { renderShareView(p); return true; }
+  } catch (e) { console.warn('share decode failed', e); toast('這個分享連結無法讀取'); }
   return false;
 }
 
@@ -736,7 +804,7 @@ function bind() {
   $('#btn-share').addEventListener('click', openShare);
   $('#seg-share').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; shareInc = b.dataset.v === 'all'; renderSharePreview(); });
   $('#share-go').addEventListener('click', doShare);
-  $('#share-copy').addEventListener('click', async () => { await copyText(`${shareText(shareInc)}\n${shareUrl(shareInc)}`); toast('已複製連結'); });
+  $('#share-copy').addEventListener('click', async () => { const url = await preparedUrl(); await copyText(`${shareText(shareInc)}\n${url}`); if (!shareFallbackReason) toast('已複製連結'); });
   $('#sheet-bg').addEventListener('click', closeSheets);
 
   // onboarding
@@ -842,7 +910,9 @@ function bind() {
 
 /* ---------- init ---------- */
 bind();
-if (!tryShareView()) {
+if (isShareHash()) {
+  tryShareView().then(ok => { if (!ok) show(state.car.deliveryDate ? 'home' : 'onboard'); });
+} else {
   show(state.car.deliveryDate ? 'home' : 'onboard');
 }
-if (!location.hash.startsWith('#s=') && Sync.enabled()) Sync.syncNow().then(() => { if (state.car.deliveryDate && currentView === 'onboard') show('home'); });
+if (!isShareHash() && Sync.enabled()) Sync.syncNow().then(() => { if (state.car.deliveryDate && currentView === 'onboard') show('home'); });
