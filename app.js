@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.5.0';
+const VERSION = 'v0.5.1';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -727,11 +727,19 @@ function openShare() {
 function renderSharePreview() {
   setSeg('seg-share', shareInc ? 'all' : 'ops');
   $('#share-preview').textContent = shareText(shareInc);
-  sharePrep = shareUrl(shareInc);   // 先在背景做好短連結,按分享時不用等
+  const st = $('#share-link-status');
+  st.textContent = '正在建立短連結…';
+  const prep = sharePrep = shareUrl(shareInc);   // 先在背景做好短連結,按分享時不用等
+  prep.then(url => {
+    if (sharePrep !== prep) return;   // 已經切換口徑,忽略舊結果
+    st.innerHTML = shareFallbackReason
+      ? `<span style="color:var(--warn)">⚠ 無法建立短連結:${esc(shareFallbackReason)}。將改用長連結,LINE 可能會截斷。</span>`
+      : `✓ 短連結已準備好:${esc(url.replace(/^https?:\/\//, ''))}`;
+  });
 }
 async function preparedUrl() {
   const url = await (sharePrep || shareUrl(shareInc));
-  if (shareFallbackReason) toast(`短連結建立失敗(${shareFallbackReason}),改用長連結`);
+  if (shareFallbackReason) toast('短連結建立失敗,改用長連結');
   return url;
 }
 async function doShare() {
