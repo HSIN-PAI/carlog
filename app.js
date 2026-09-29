@@ -782,6 +782,10 @@ function bind() {
     if (state.car.deliveryDate && currentView !== 'home') show('settings'); else renderSettings();
   });
   $('#sync-now').addEventListener('click', async () => { await Sync.syncNow({ announce: true }); renderSettings(); });
+  $('#sync-rekey').addEventListener('click', () => {
+    $('#sync-on').style.display = 'none'; $('#sync-form').style.display = '';
+    $('#sync-repo').value = Sync.cfg().repo; $('#sync-token').value = ''; $('#sync-token').focus();
+  });
   $('#sync-disconnect').addEventListener('click', () => {
     if (!confirm('中斷同步?這台裝置的資料會保留,只是不再上傳;token 會從這台裝置移除。')) return;
     Sync.disconnect(); renderSettings(); toast('已中斷同步');
