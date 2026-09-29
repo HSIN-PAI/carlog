@@ -16,6 +16,52 @@
 
 刻意不用「每公里成本」當主指標,因為那會逼人每次都記里程。里程改用「偶爾抄一次里程表」的快照,兩點之間線性內插;不記也不影響其他功能。
 
+## 系統架構
+
+### App 執行架構
+
+```mermaid
+flowchart LR
+  subgraph device["你的手機／電腦瀏覽器"]
+    app["CarLog 單頁 App<br/>(純 HTML+JS,無框架無 build)"]
+    ls["localStorage<br/>carlog.v1 資料、carlog.sync token"]
+    app <--> ls
+  end
+  subgraph gh["GitHub"]
+    pages["GitHub Pages<br/>hsin-pai.github.io/carlog<br/>(公開 repo carlog,只放程式)"]
+    data["私有 repo carlog-data<br/>carlog.json(全部資料)"]
+    shares["公開 repo carlog-shares<br/>shares/&lt;id&gt;.json(分享摘要)"]
+  end
+  pages -->|載入 index.html + app.js| app
+  app <-->|"Contents API + token<br/>每次儲存後推、開啟時拉、id 合併"| data
+  app -->|"按分享時寫入摘要"| shares
+  friend["朋友的瀏覽器<br/>#id=… 唯讀頁"] -->|raw.githubusercontent.com| shares
+```
+
+沒有任何自建伺服器。瀏覽器直接呼叫 GitHub API,token 只存在裝置上。
+
+### 程式更新流程
+
+```mermaid
+flowchart LR
+  dev["改 index.html / app.js<br/>(記得升 ?v= 版本號)"] -->|git push| repo["GitHub 公開 repo<br/>carlog"]
+  repo -->|自動建置約 30 秒| pages["GitHub Pages"]
+  pages -->|重新整理| user["手機／電腦拿到新版"]
+```
+
+### 多裝置同步與合併
+
+```mermaid
+flowchart TD
+  phone["手機 App"] -->|"儲存後 1.5 秒 push"| json["carlog.json<br/>(carlog-data)"]
+  pc["電腦 App"] -->|"儲存後 1.5 秒 push"| json
+  json -->|"開啟／回前景時 pull"| phone
+  json -->|"開啟／回前景時 pull"| pc
+  json -.->|"合併規則"| rule["同 id 取 updatedAt 較新<br/>刪除留墓碑 deleted[id]<br/>sha 衝突自動重拉再推(最多 3 次)"]
+```
+
+Claude 也可以直接改 `carlog-data` 的 `carlog.json`(例如幫忙從單據照片建立支出),App 下次開啟就會合併進來。
+
 ## 功能
 
 | 頁面 | 內容 |
