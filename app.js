@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.5.3';
+const VERSION = 'v0.5.4';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -532,7 +532,7 @@ const Sync = (() => {
   const UI_PREFS = ['includePrice', 'chartWindow', 'statsPeriod'];
   let cfg = null;
   try { cfg = JSON.parse(localStorage.getItem(KEY)) || null; } catch { cfg = null; }
-  let timer = null, busy = false, dirty = false, queued = false;
+  let timer = null, busy = false, dirty = false, queued = false, joining = false;   // joining:剛連線,車輛資料以雲端為準
   let status = { state: 'off', msg: '' };
 
   const enabled = () => !!(cfg && cfg.token && cfg.repo);
@@ -599,7 +599,8 @@ const Sync = (() => {
     merged.expenses = mergeItems(state.expenses, remote.expenses, deleted);
     merged.odometer = mergeItems(state.odometer, remote.odometer, deleted);
     const remoteHasCar = !!remote.car?.deliveryDate;
-    if (remoteHasCar && (remote.meta?.updatedAt || 0) > (state.meta?.updatedAt || 0) || (remoteHasCar && !state.car.deliveryDate)) {
+    const takeRemoteCar = remoteHasCar && (joining || !state.car.deliveryDate || (remote.meta?.updatedAt || 0) > (state.meta?.updatedAt || 0));
+    if (takeRemoteCar) {
       merged.car = { ...remote.car };
       const prefs = Object.fromEntries(UI_PREFS.map(k => [k, state.settings[k]]));
       merged.settings = { ...merged.settings, ...remote.settings, ...prefs };
@@ -626,7 +627,7 @@ const Sync = (() => {
         ok = await push(remote.sha);
       }
       if (!ok) throw new Error('多次衝突,稍後再試');
-      dirty = false; cfg.lastSync = Date.now(); saveCfg();
+      dirty = false; joining = false; cfg.lastSync = Date.now(); saveCfg();
       setStatus('ok', '');
     } catch (e) {
       setStatus('error', e.message);
@@ -643,8 +644,9 @@ const Sync = (() => {
   }
   async function connect(repo, token) {
     cfg = { repo: repo.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''), token: token.trim(), lastSync: 0 };
-    saveCfg(); dirty = true;
+    saveCfg(); dirty = true; joining = true;
     await syncNow({ announce: true });
+    joining = false;
     if (status.state === 'error') { cfg = null; saveCfg(); dirty = false; }
     return status.state !== 'error';
   }
