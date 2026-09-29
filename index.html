@@ -292,7 +292,13 @@
     <label class="field"><span class="t">金額(元)</span><input id="exp-amount" type="number" inputmode="decimal" placeholder="0"></label>
     <label class="field"><span class="t">日期</span><input id="exp-date" type="date"></label>
   </div>
-  <label class="field" id="exp-kwh-field" style="display:none"><span class="t">充電度數(kWh,選填)</span><input id="exp-kwh" type="number" step="0.1" inputmode="decimal" placeholder="例:45.2"></label>
+  <div id="exp-kwh-field" style="display:none">
+    <div class="grid2">
+      <label class="field"><span class="t">度數(kWh)</span><input id="exp-kwh" type="number" step="0.1" inputmode="decimal" placeholder="例:45.2"></label>
+      <label class="field"><span class="t">每度單價(元/度)</span><input id="exp-unit" type="number" step="0.01" inputmode="decimal" placeholder="例:6"></label>
+    </div>
+    <p class="note" style="margin:-4px 0 12px">金額、度數、單價填任兩個,第三個自動算;單價會記住上次的。</p>
+  </div>
   <label class="field"><span class="t">備註(選填)</span><input id="exp-note" type="text" placeholder="例:超充 台中站"></label>
   <div class="btn-row">
     <button class="danger" id="exp-delete" style="display:none">刪除</button>

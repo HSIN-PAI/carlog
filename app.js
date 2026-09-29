@@ -444,6 +444,7 @@ function openExpense(e) {
   $('#exp-date').value = e ? e.date : todayStr();
   $('#exp-note').value = e ? (e.note || '') : '';
   $('#exp-kwh').value = e && e.kwh ? e.kwh : '';
+  $('#exp-unit').value = e && e.kwh ? round2(e.amount / e.kwh) : (!e && cat === 'charging' ? (localStorage.getItem('carlog.lastUnit') || '') : '');
   $('#exp-kwh-field').style.display = cat === 'charging' ? '' : 'none';
   $('#exp-delete').style.display = e ? '' : 'none';
   openSheet('sheet-expense');
@@ -457,6 +458,7 @@ function saveExpense() {
   if (!(amount >= 0)) return toast('請輸入金額');
   if (!date) return toast('請選日期');
   const kwh = cat === 'charging' ? (parseFloat($('#exp-kwh').value) || null) : null;
+  if (kwh && amount > 0) localStorage.setItem('carlog.lastUnit', String(round2(amount / kwh)));
   const note = $('#exp-note').value.trim();
   if (editingExpense) Object.assign(editingExpense, { category: cat, amount, date, note, kwh, updatedAt: Date.now() });
   else state.expenses.push({ id: uid(), category: cat, amount, date, note, kwh, updatedAt: Date.now() });
@@ -464,6 +466,18 @@ function saveExpense() {
   save(); closeSheets(); render(); toast(editingExpense ? '已更新' : '已新增');
 }
 
+// 充電三角:金額 / 度數 / 單價,改任一個就補算另一個
+function round2(n) { return Math.round(n * 100) / 100; }
+function chargingCalc(changed) {
+  const A = $('#exp-amount'), K = $('#exp-kwh'), U = $('#exp-unit');
+  const a = parseFloat(A.value), k = parseFloat(K.value), u = parseFloat(U.value);
+  if (changed === 'kwh' || changed === 'unit') {
+    if (k > 0 && u > 0) A.value = Math.round(k * u);
+    else if (changed === 'kwh' && k > 0 && a > 0) U.value = round2(a / k);
+  } else if (changed === 'amount') {
+    if (k > 0 && a > 0) U.value = round2(a / k);
+  }
+}
 function openOdo(o) {
   editingOdo = o || null;
   $('#odo-km').value = o ? o.km : '';
@@ -672,8 +686,12 @@ function bind() {
     const c = ev.target.closest('.chip'); if (!c) return;
     $$('#exp-cats .chip').forEach(x => x.classList.toggle('on', x === c));
     $('#exp-kwh-field').style.display = c.dataset.cat === 'charging' ? '' : 'none';
+    if (c.dataset.cat === 'charging' && !editingExpense && !$('#exp-unit').value) $('#exp-unit').value = localStorage.getItem('carlog.lastUnit') || '';
   });
   $('#exp-save').addEventListener('click', saveExpense);
+  $('#exp-kwh').addEventListener('input', () => chargingCalc('kwh'));
+  $('#exp-unit').addEventListener('input', () => chargingCalc('unit'));
+  $('#exp-amount').addEventListener('input', () => { if ($('#exp-cats .chip.on')?.dataset.cat === 'charging') chargingCalc('amount'); });
   $('#exp-amount').addEventListener('keydown', ev => { if (ev.key === 'Enter') saveExpense(); });
   $('#exp-delete').addEventListener('click', () => {
     if (!editingExpense || !confirm('刪除這筆支出?')) return;
