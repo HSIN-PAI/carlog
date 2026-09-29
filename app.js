@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.3.0';
+const VERSION = 'v0.4.0';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -305,22 +305,7 @@ function renderHome() {
   const from = days - n;
   const data = [];
   for (let i = from; i < days; i++) data.push({ x: addDays(start, i), y: series[i] });
-  let opts = {}, note = '';
-  if (data.length) {
-    const ys = data.map(d => d.y);
-    if (win === 'all') {
-      // 1/x 曲線前段會把 y 軸撐爆:把 y 上限設在「跳過前 10%(至少 7 天)後」的最大值
-      const skip = Math.min(data.length - 1, Math.max(7, Math.floor(data.length * 0.1)));
-      const yMax = Math.max(...ys.slice(skip)) * 1.08;
-      const clipped = Math.max(...ys) > yMax;
-      opts = { yMin: 0, yMax: yMax || undefined };
-      if (clipped) note = '前段數值超出範圍已截斷';
-    } else {
-      const mn = Math.min(...ys), mx = Math.max(...ys);
-      const pad = Math.max((mx - mn) * 0.6, mx * 0.05, 1);
-      opts = { yMin: Math.max(0, mn - pad), yMax: mx + pad };
-    }
-  }
+  const { opts, note } = lineOpts(data, win);
   renderLineChart($('#chart-daily'), data, opts);
   $('#chart-daily-note').textContent = note;
 
@@ -344,6 +329,24 @@ function renderHome() {
   } else {
     $('#home-odo').textContent = '還沒有里程快照。偶爾抄一次里程表,就能多看到每公里成本;不記也沒關係。';
   }
+}
+
+function lineOpts(data, win) {
+  let opts = {}, note = '';
+  if (!data.length) return { opts, note };
+  const ys = data.map(d => d.y);
+  if (win === 'all') {
+    // 1/x 曲線前段會把 y 軸撐爆:把 y 上限設在「跳過前 10%(至少 7 天)後」的最大值
+    const skip = Math.min(data.length - 1, Math.max(7, Math.floor(data.length * 0.1)));
+    const yMax = Math.max(...ys.slice(skip)) * 1.08;
+    if (Math.max(...ys) > yMax) note = '前段數值超出範圍已截斷';
+    opts = { yMin: 0, yMax: yMax || undefined };
+  } else {
+    const mn = Math.min(...ys), mx = Math.max(...ys);
+    const pad = Math.max((mx - mn) * 0.6, mx * 0.05, 1);
+    opts = { yMin: Math.max(0, mn - pad), yMax: mx + pad };
+  }
+  return { opts, note };
 }
 
 function itemHTML(e) {
@@ -643,6 +646,81 @@ const Sync = (() => {
   return { enabled, cfg: () => cfg, statusText, icon, syncNow, schedulePush, connect, disconnect };
 })();
 
+/* ---------- 分享(資料壓在網址 hash,無伺服器) ---------- */
+const b64u = {
+  enc: str => { const b = new TextEncoder().encode(str); let bin = ''; for (const c of b) bin += String.fromCharCode(c); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: b64 => { const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/')); const bytes = Uint8Array.from(bin, c => c.charCodeAt(0)); return new TextDecoder().decode(bytes); },
+};
+function sharePayload(includePrice) {
+  const series = dailySeries(includePrice);
+  const n = series.length;
+  const idx = [];
+  const step = Math.max(1, Math.ceil(n / 60));
+  for (let i = 0; i < n; i += step) idx.push(i);
+  if (idx[idx.length - 1] !== n - 1) idx.push(n - 1);
+  const cats = categoryTotals(includePrice, 'all').map(c => [c.id, Math.round(c.total)]);
+  const months = monthlyTotals(includePrice).map(m => [m.key, Math.round(m.total)]);
+  return {
+    v: 1, n: state.car.name, d: state.car.deliveryDate, t: todayStr(), p: includePrice ? 1 : 0,
+    days: n, total: Math.round(sum(expensesInScope(includePrice))), daily: Math.round(n ? series[n - 1] : 0),
+    s: idx.map(i => [i, Math.round(series[i])]), c: cats, m: months,
+  };
+}
+function shareUrl(includePrice) { return `${location.origin}${location.pathname}#s=${b64u.enc(JSON.stringify(sharePayload(includePrice)))}`; }
+function shareText(includePrice) { const p = sharePayload(includePrice); return `我的 ${p.n} 開了 ${p.days} 天,每天持有成本 ${fmt(p.daily)} 元${includePrice ? '(含車價)' : '(不含車價)'},累計 ${fmt(p.total)} 元。`; }
+let shareInc = true;
+function openShare() {
+  shareInc = state.settings.includePrice;
+  renderSharePreview();
+  openSheet('sheet-share');
+}
+function renderSharePreview() {
+  setSeg('seg-share', shareInc ? 'all' : 'ops');
+  $('#share-preview').textContent = shareText(shareInc);
+}
+async function doShare() {
+  const url = shareUrl(shareInc), text = shareText(shareInc);
+  if (navigator.share) {
+    try { await navigator.share({ title: `${state.car.name} 持有成本`, text, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  await copyText(`${text}\n${url}`); toast('已複製連結,貼給朋友吧');
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); }
+  catch { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+}
+function renderShareView(p) {
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-share'));
+  $('nav.bottom').style.display = 'none'; $('#fab').classList.remove('show');
+  document.title = `${p.n} 持有成本`;
+  $('#sh-title').textContent = p.n;
+  $('#sh-name').textContent = p.n;
+  $('#sh-asof').textContent = `截至 ${fmtYMD(p.t)}`;
+  $('#sh-label').textContent = `每日持有成本(${p.p ? '含車價' : '不含車價'})`;
+  $('#sh-daily').textContent = fmt(p.daily);
+  $('#sh-days').textContent = fmt(p.days);
+  $('#sh-total').textContent = fmt(p.total);
+  const data = p.s.map(([i, y]) => ({ x: addDays(p.d, i), y }));
+  const { opts, note } = lineOpts(data, 'all');
+  renderLineChart($('#chart-sh-daily'), data, opts);
+  $('#sh-note').textContent = note;
+  const cats = p.c.filter(([id]) => CAT[id]);
+  const total = cats.reduce((a, [, v]) => a + v, 0);
+  renderDonut($('#chart-sh-cat'), cats.map(([id, v]) => ({ value: v, color: CAT_COLOR[id] })), '全部合計', fmt(total) + ' 元');
+  $('#sh-legend').innerHTML = cats.map(([id, v]) => `<div><span class="l"><i style="background:${CAT_COLOR[id]}"></i>${CAT[id].icon} ${CAT[id].name}</span><span>${fmt(v)} <span class="tag">${total ? (v / total * 100).toFixed(0) : 0}%</span></span></div>`).join('');
+  const g = { once: 0, fixed: 0, variable: 0 };
+  for (const [id, v] of cats) g[CAT[id].group] += v;
+  $('#sh-groups').innerHTML = Object.entries(GROUPS).map(([k, v]) => `<div class="stat"><div class="k">${v}</div><div class="v">${fmtWan(g[k])}</div></div>`).join('');
+  const cur = monthKey(p.t);
+  renderBarChart($('#chart-sh-month'), p.m.map(([k, v]) => ({ label: `${+k.slice(5)}月`, value: v, hot: k === cur })));
+}
+function tryShareView() {
+  const m = location.hash.match(/^#s=(.+)$/);
+  if (!m) return false;
+  try { const p = JSON.parse(b64u.dec(m[1])); if (p && p.v === 1 && p.d) { renderShareView(p); return true; } } catch (e) { console.warn('share decode failed', e); }
+  return false;
+}
+
 /* ---------- events ---------- */
 function bind() {
   // nav
@@ -651,6 +729,10 @@ function bind() {
     if (nav) show(nav.dataset.nav);
   });
   $('#fab').addEventListener('click', () => openExpense());
+  $('#btn-share').addEventListener('click', openShare);
+  $('#seg-share').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; shareInc = b.dataset.v === 'all'; renderSharePreview(); });
+  $('#share-go').addEventListener('click', doShare);
+  $('#share-copy').addEventListener('click', async () => { await copyText(`${shareText(shareInc)}\n${shareUrl(shareInc)}`); toast('已複製連結'); });
   $('#sheet-bg').addEventListener('click', closeSheets);
 
   // onboarding
@@ -754,5 +836,7 @@ function bind() {
 
 /* ---------- init ---------- */
 bind();
-show(state.car.deliveryDate ? 'home' : 'onboard');
-if (Sync.enabled()) Sync.syncNow().then(() => { if (state.car.deliveryDate && currentView === 'onboard') show('home'); });
+if (!tryShareView()) {
+  show(state.car.deliveryDate ? 'home' : 'onboard');
+}
+if (!location.hash.startsWith('#s=') && Sync.enabled()) Sync.syncNow().then(() => { if (state.car.deliveryDate && currentView === 'onboard') show('home'); });

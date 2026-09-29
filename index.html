@@ -153,7 +153,7 @@
 
   <!-- 總覽 -->
   <section id="view-home" class="view">
-    <header class="top"><h1>CarLog</h1><span class="car-name"><span id="home-sync" style="margin-right:6px"></span><span id="home-car"></span></span></header>
+    <header class="top"><h1>CarLog</h1><span class="car-name"><span id="home-sync" style="margin-right:6px"></span><span id="home-car"></span><button class="ghost small" id="btn-share" style="margin-left:8px">分享</button></span></header>
     <div class="card hero">
       <div class="row">
         <div class="label">每日持有成本</div>
@@ -223,6 +223,29 @@
       <h2 style="margin-top:0">依類型</h2>
       <div class="stat-row three" id="stats-groups"></div>
     </div>
+  </section>
+
+  <!-- 分享的唯讀頁 -->
+  <section id="view-share" class="view">
+    <header class="top"><h1 id="sh-title">CarLog</h1><span class="car-name" id="sh-asof"></span></header>
+    <div class="card hero">
+      <div class="label" id="sh-label">每日持有成本</div>
+      <div class="big"><span id="sh-daily">—</span><small>元 / 天</small></div>
+      <div class="sub">已持有 <b id="sh-days">—</b> 天,累計 <b id="sh-total">—</b> 元</div>
+      <svg id="chart-sh-daily" class="chart" viewBox="0 0 520 220" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="note" id="sh-note"></div>
+    </div>
+    <div class="stat-row three" id="sh-groups"></div>
+    <div class="card">
+      <h2 style="margin-top:0">分類占比</h2>
+      <svg id="chart-sh-cat" class="chart" viewBox="0 0 520 240"></svg>
+      <div class="legend" id="sh-legend"></div>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">每月支出(近 12 個月)</h2>
+      <svg id="chart-sh-month" class="chart" viewBox="0 0 520 200"></svg>
+    </div>
+    <p class="note" style="text-align:center">這是 <b id="sh-name"></b> 用 CarLog 記的持有成本 · <a href="./" style="color:var(--accent)">我也要記一台</a></p>
   </section>
 
   <!-- 設定 -->
@@ -303,6 +326,25 @@
   <div class="btn-row">
     <button class="danger" id="exp-delete" style="display:none">刪除</button>
     <button class="primary" id="exp-save">儲存</button>
+  </div>
+</div>
+
+<!-- 分享 -->
+<div class="sheet" id="sheet-share">
+  <div class="handle"></div>
+  <h3>分享持有成本</h3>
+  <p class="note" style="margin-top:0">朋友點連結會看到唯讀摘要:每日成本、曲線、分類占比、每月支出。只有統計數字,沒有單筆明細與備註。</p>
+  <div class="row" style="margin-bottom:12px">
+    <span class="note" style="margin:0">口徑</span>
+    <div class="seg" id="seg-share">
+      <button data-v="all">含車價</button>
+      <button data-v="ops">不含車價</button>
+    </div>
+  </div>
+  <div class="card" style="background:var(--card-2)"><div id="share-preview" style="font-size:0.95em"></div></div>
+  <div class="btn-row">
+    <button class="ghost" id="share-copy">複製連結</button>
+    <button class="primary" id="share-go">分享</button>
   </div>
 </div>
 
