@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.4.1';
+const VERSION = 'v0.4.2';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -446,6 +446,7 @@ function openExpense(e) {
   $('#exp-amount').value = e ? e.amount : '';
   $('#exp-date').value = e ? e.date : todayStr();
   $('#exp-note').value = e ? (e.note || '') : '';
+  autoGrow($('#exp-note'));
   $('#exp-kwh').value = e && e.kwh ? e.kwh : '';
   $('#exp-unit').value = e && e.kwh ? round2(e.amount / e.kwh) : (!e && cat === 'charging' ? (localStorage.getItem('carlog.lastUnit') || '') : '');
   $('#exp-kwh-field').style.display = cat === 'charging' ? '' : 'none';
@@ -481,6 +482,7 @@ function chargingCalc(changed) {
     if (k > 0 && a > 0) U.value = round2(a / k);
   }
 }
+function autoGrow(ta) { ta.style.height = 'auto'; ta.style.height = Math.max(46, ta.scrollHeight + 2) + 'px'; }
 function openOdo(o) {
   editingOdo = o || null;
   $('#odo-km').value = o ? o.km : '';
@@ -771,6 +773,7 @@ function bind() {
     if (c.dataset.cat === 'charging' && !editingExpense && !$('#exp-unit').value) $('#exp-unit').value = localStorage.getItem('carlog.lastUnit') || '';
   });
   $('#exp-save').addEventListener('click', saveExpense);
+  $('#exp-note').addEventListener('input', () => autoGrow($('#exp-note')));
   $('#exp-kwh').addEventListener('input', () => chargingCalc('kwh'));
   $('#exp-unit').addEventListener('input', () => chargingCalc('unit'));
   $('#exp-amount').addEventListener('input', () => { if ($('#exp-cats .chip.on')?.dataset.cat === 'charging') chargingCalc('amount'); });

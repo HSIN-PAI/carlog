@@ -99,7 +99,7 @@
     .item .ic { width: 36px; height: 36px; border-radius: 10px; background: var(--card-2); display: flex; align-items: center; justify-content: center; font-size: 1.1em; flex-shrink: 0; }
     .item .mid { flex: 1; min-width: 0; }
     .item .cat { font-weight: 600; font-size: 0.95em; }
-    .item .meta { color: var(--muted); font-size: 0.78em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .meta { color: var(--muted); font-size: 0.78em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
     .item .amt { font-weight: 700; white-space: nowrap; }
     /* legend */
     .legend { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 10px; font-size: 0.88em; }
@@ -322,7 +322,7 @@
     </div>
     <p class="note" style="margin:-4px 0 12px">金額、度數、單價填任兩個,第三個自動算;單價會記住上次的。</p>
   </div>
-  <label class="field"><span class="t">備註(選填)</span><input id="exp-note" type="text" placeholder="例:超充 台中站"></label>
+  <label class="field"><span class="t">備註(選填)</span><textarea id="exp-note" rows="2" placeholder="例:超充 台中站" style="resize:none;overflow:hidden;line-height:1.45"></textarea></label>
   <div class="btn-row">
     <button class="danger" id="exp-delete" style="display:none">刪除</button>
     <button class="primary" id="exp-save">儲存</button>
@@ -364,6 +364,6 @@
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=0.4.1"></script>
+<script src="app.js?v=0.4.2"></script>
 </body>
 </html>
