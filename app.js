@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.2.0';
+const VERSION = 'v0.3.0';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -29,7 +29,7 @@ function defaultState() {
   return {
     version: 1,
     car: { name: 'Tesla Model Y', deliveryDate: '', deliveryOdo: 0 },
-    settings: { includePrice: true, chartWindow: 'all', statsPeriod: 'all', fuelKmPerL: 12, fuelPricePerL: 30, fuelCarTaxYear: 17410, evTaxYear: 0 },
+    settings: { includePrice: true, chartWindow: 'all', statsPeriod: 'all' },
     expenses: [],   // {id, date, category, amount, note, kwh?, updatedAt}
     odometer: [],   // {id, date, km, updatedAt}
     deleted: {},    // 已刪除 id → 刪除時間(同步用墓碑)
@@ -51,15 +51,15 @@ function load() {
 }
 function normalize(obj) {
   const d = defaultState();
-  const s = Object.assign(d, obj || {});
-  s.car = Object.assign(d.car, obj?.car || {});
-  s.settings = Object.assign(d.settings, obj?.settings || {});
+  const s = Object.assign(defaultState(), obj || {});
+  s.car = Object.assign({}, d.car, obj?.car || {});
+  s.settings = Object.assign({}, d.settings, obj?.settings || {});
   s.expenses = Array.isArray(obj?.expenses) ? obj.expenses.filter(e => e && e.date && CAT[e.category] && isFinite(+e.amount)) : [];
   s.odometer = Array.isArray(obj?.odometer) ? obj.odometer.filter(o => o && o.date && isFinite(+o.km)) : [];
   s.expenses.forEach(e => { e.amount = +e.amount; if (e.kwh != null) e.kwh = +e.kwh || null; });
   s.odometer.forEach(o => { o.km = +o.km; });
   s.deleted = (obj?.deleted && typeof obj.deleted === 'object') ? obj.deleted : {};
-  s.meta = Object.assign(d.meta, obj?.meta || {});
+  s.meta = Object.assign({}, d.meta, obj?.meta || {});
   return s;
 }
 function save() {
@@ -146,24 +146,6 @@ function kmDrivenInfo() {
   return { km, asOf: last.date, days, perDay: km / days };
 }
 
-function compareData() {
-  const s = state.settings;
-  const info = kmDrivenInfo();
-  const days = daysOwned();
-  const charging = expensesInScope(true).filter(e => e.category === 'charging');
-  const chargingCost = sum(charging);
-  const kwh = charging.reduce((a, e) => a + (e.kwh || 0), 0);
-  const fuelCost = info.km / (s.fuelKmPerL || 1) * s.fuelPricePerL;
-  const fuelTax = s.fuelCarTaxYear * days / 365;
-  const evTax = s.evTaxYear * days / 365;
-  const saved = fuelCost + fuelTax - chargingCost - evTax;
-  return {
-    ...info, days, chargingCost, kwh, fuelCost, fuelTax, evTax, saved,
-    perKmEv: info.km > 0 ? chargingCost / info.km : NaN,
-    perKmFuel: s.fuelPricePerL / (s.fuelKmPerL || 1),
-    savedPerMonth: saved / Math.max(1, days / 30.4),
-  };
-}
 
 function monthlyTotals(includePrice, months = 12) {
   const now = new Date();
@@ -360,7 +342,7 @@ function renderHome() {
   if (km.asOf) {
     $('#home-odo').innerHTML = `截至 <b>${fmtYMD(km.asOf)}</b>:里程表 <b>${fmt(kmAt(km.asOf))}</b> km,已跑 <b>${fmt(km.km)}</b> km,平均每天 <b>${fmt(km.perDay, 1)}</b> km`;
   } else {
-    $('#home-odo').textContent = '還沒有里程快照。偶爾抄一次里程表,就能算每公里成本與油車比較。';
+    $('#home-odo').textContent = '還沒有里程快照。偶爾抄一次里程表,就能多看到每公里成本;不記也沒關係。';
   }
 }
 
@@ -411,43 +393,6 @@ function renderStats() {
   $('#stats-groups').innerHTML = Object.entries(GROUPS).map(([k, v]) => `<div class="stat"><div class="k">${v}</div><div class="v">${fmtWan(g[k])}</div></div>`).join('');
 }
 
-function renderCompare() {
-  const s = state.settings;
-  $('#cmp-kmpl').value = s.fuelKmPerL;
-  $('#cmp-price').value = s.fuelPricePerL;
-  $('#cmp-fueltax').value = s.fuelCarTaxYear;
-  $('#cmp-evtax').value = s.evTaxYear;
-  const d = compareData();
-  const body = $('#compare-body');
-  if (!d.asOf) {
-    body.innerHTML = `<div class="card hero"><div class="label">開電車至今省下</div><div class="big">—</div>
-      <div class="sub">需要至少一筆里程快照才能比較。</div>
-      <div class="btn-row"><button class="ghost" id="cmp-add-odo">記一次里程</button></div></div>`;
-    return;
-  }
-  const good = d.saved >= 0;
-  body.innerHTML = `
-    <div class="card hero">
-      <div class="label">開電車至今${good ? '省下' : '多花'}</div>
-      <div class="big" style="color:${good ? 'var(--accent)' : 'var(--danger)'}">${fmt(Math.abs(d.saved))}<small>元</small></div>
-      <div class="sub">里程截至 <b>${fmtYMD(d.asOf)}</b> 共 <b>${fmt(d.km)}</b> km · 平均每月${good ? '省' : '多'} <b>${fmt(Math.abs(d.savedPerMonth))}</b> 元</div>
-    </div>
-    <div class="card">
-      <div class="vs">
-        <div class="side"><div class="t">⚡ 這台車 充電</div><div class="n">${fmt(d.chargingCost)}</div><div class="t">${isFinite(d.perKmEv) ? fmt(d.perKmEv, 2) + ' 元/km' : ''}</div></div>
-        <div class="mid">vs</div>
-        <div class="side"><div class="t">⛽ 對照油車 油錢</div><div class="n">${fmt(d.fuelCost)}</div><div class="t">${fmt(d.perKmFuel, 2)} 元/km</div></div>
-      </div>
-      <div class="breakdown">
-        <div><span>油車油錢(${fmt(d.km)} km ÷ ${s.fuelKmPerL} km/L × ${s.fuelPricePerL} 元)</span><span>+${fmt(d.fuelCost)}</span></div>
-        <div><span>油車稅費(${fmt(s.fuelCarTaxYear)} 元/年 × ${d.days} 天)</span><span>+${fmt(d.fuelTax)}</span></div>
-        <div><span>電車充電(實際記錄)</span><span>−${fmt(d.chargingCost)}</span></div>
-        <div><span>電車稅費(${fmt(s.evTaxYear)} 元/年 × ${d.days} 天)</span><span>−${fmt(d.evTax)}</span></div>
-        <div><span>${good ? '省下' : '多花'}</span><span>${fmt(Math.abs(d.saved))} 元</span></div>
-      </div>
-      ${d.kwh > 0 ? `<div class="note">充電已記 ${fmt(d.kwh, 1)} kWh:平均 ${fmt(d.chargingCost / d.kwh, 2)} 元/度、每度約跑 ${fmt(d.km / d.kwh, 1)} km(以總里程估)</div>` : '<div class="note">記充電時順手填度數(kWh),就能看到每度電價與電耗。</div>'}
-    </div>`;
-}
 
 function renderSettings() {
   $('#set-name').value = state.car.name;
@@ -482,7 +427,6 @@ function render() {
   if (currentView === 'home') renderHome();
   else if (currentView === 'expenses') renderExpenses();
   else if (currentView === 'stats') renderStats();
-  else if (currentView === 'compare') renderCompare();
   else if (currentView === 'settings') renderSettings();
 }
 
@@ -713,7 +657,6 @@ function bind() {
   $('#seg-window').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; state.settings.chartWindow = b.dataset.v; save(); renderHome(); });
   $('#btn-add-odo').addEventListener('click', () => openOdo());
   $('#btn-add-odo-2').addEventListener('click', () => openOdo());
-  document.addEventListener('click', ev => { if (ev.target.id === 'cmp-add-odo') openOdo(); });
 
   // expense items (home + list)
   document.addEventListener('click', ev => {
@@ -752,15 +695,6 @@ function bind() {
   $('#seg-period').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; state.settings.statsPeriod = b.dataset.v; save(); renderStats(); });
   $('#stats-inc-price').addEventListener('change', renderStats);
 
-  // compare
-  $('#cmp-save').addEventListener('click', () => {
-    const s = state.settings;
-    s.fuelKmPerL = parseFloat($('#cmp-kmpl').value) || 12;
-    s.fuelPricePerL = parseFloat($('#cmp-price').value) || 30;
-    s.fuelCarTaxYear = parseFloat($('#cmp-fueltax').value) || 0;
-    s.evTaxYear = parseFloat($('#cmp-evtax').value) || 0;
-    save(); renderCompare(); toast('已儲存');
-  });
 
   // settings
   $('#set-save').addEventListener('click', () => {
