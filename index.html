@@ -163,7 +163,7 @@
 
   <!-- 總覽 -->
   <section id="view-home" class="view">
-    <header class="top"><h1>CarLog</h1><span class="car-name" id="home-car"></span></header>
+    <header class="top"><h1>CarLog</h1><span class="car-name"><span id="home-sync" style="margin-right:6px"></span><span id="home-car"></span></span></header>
     <div class="card hero">
       <div class="row">
         <div class="label">每日持有成本</div>
@@ -269,6 +269,21 @@
       <h2 style="margin-top:0">里程快照</h2>
       <div id="set-odo-list" class="list"></div>
       <div class="btn-row"><button class="ghost" id="btn-add-odo-2">新增里程快照</button></div>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">雲端同步(GitHub)</h2>
+      <p class="note" style="margin-top:0">把資料自動存進你 GitHub 的<b>私有 repo</b>。每次記帳都是一個版本,多裝置開啟會自動合併。</p>
+      <div id="sync-form">
+        <label class="field"><span class="t">Repo(帳號/名稱)</span><input id="sync-repo" type="text" autocapitalize="off" autocorrect="off"></label>
+        <label class="field"><span class="t">Token</span><input id="sync-token" type="password" placeholder="github_pat_…" autocapitalize="off" autocorrect="off">
+          <span class="hint">GitHub → Settings → Developer settings → Fine-grained tokens;Repository access 只選這個 repo,Permissions 給 Contents: Read and write。token 只存在這台裝置。</span></label>
+        <button class="primary" id="sync-connect">連線並同步</button>
+      </div>
+      <div id="sync-on" style="display:none">
+        <div class="note" style="margin-top:0">已連線:<b id="sync-repo-label"></b></div>
+        <div class="btn-row"><button class="ghost" id="sync-now">立即同步</button><button class="danger" id="sync-disconnect">中斷同步</button></div>
+      </div>
+      <div class="note" id="sync-status"></div>
     </div>
     <div class="card">
       <h2 style="margin-top:0">資料備份</h2>

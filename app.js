@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.1.0';
+const VERSION = 'v0.2.0';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -30,8 +30,10 @@ function defaultState() {
     version: 1,
     car: { name: 'Tesla Model Y', deliveryDate: '', deliveryOdo: 0 },
     settings: { includePrice: true, chartWindow: 'all', statsPeriod: 'all', fuelKmPerL: 12, fuelPricePerL: 30, fuelCarTaxYear: 17410, evTaxYear: 0 },
-    expenses: [],   // {id, date, category, amount, note, kwh?}
-    odometer: [],   // {id, date, km}
+    expenses: [],   // {id, date, category, amount, note, kwh?, updatedAt}
+    odometer: [],   // {id, date, km, updatedAt}
+    deleted: {},    // 已刪除 id → 刪除時間(同步用墓碑)
+    meta: { updatedAt: 0 },
   };
 }
 let state = load();
@@ -56,11 +58,15 @@ function normalize(obj) {
   s.odometer = Array.isArray(obj?.odometer) ? obj.odometer.filter(o => o && o.date && isFinite(+o.km)) : [];
   s.expenses.forEach(e => { e.amount = +e.amount; if (e.kwh != null) e.kwh = +e.kwh || null; });
   s.odometer.forEach(o => { o.km = +o.km; });
+  s.deleted = (obj?.deleted && typeof obj.deleted === 'object') ? obj.deleted : {};
+  s.meta = Object.assign(d.meta, obj?.meta || {});
   return s;
 }
 function save() {
+  state.meta.updatedAt = Date.now();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { toast('儲存失敗:' + e.message); }
+  Sync.schedulePush();
 }
 
 /* ---------- utils ---------- */
@@ -298,6 +304,8 @@ function setSeg(id, value) { $$(`#${id} button`).forEach(b => b.classList.toggle
 function renderHome() {
   const inc = state.settings.includePrice;
   $('#home-car').textContent = state.car.name;
+  $('#home-sync').textContent = Sync.enabled() ? Sync.icon() : '';
+  $('#home-sync').title = Sync.statusText();
   setSeg('seg-scope', inc ? 'all' : 'ops');
   setSeg('seg-window', state.settings.chartWindow);
   const series = dailySeries(inc);
@@ -448,6 +456,15 @@ function renderSettings() {
   const list = [...state.odometer].sort((a, b) => b.date.localeCompare(a.date));
   $('#set-odo-list').innerHTML = list.length ? list.map(o => `<div class="item" data-odo="${o.id}"><div class="ic">🛞</div><div class="mid"><div class="cat">${fmt(o.km)} km</div><div class="meta">${fmtYMD(o.date)}</div></div></div>`).join('') : '<div class="empty">還沒有里程快照</div>';
   $('#ver').textContent = VERSION;
+  renderSyncCard();
+}
+function renderSyncCard() {
+  const on = Sync.enabled();
+  $('#sync-form').style.display = on ? 'none' : '';
+  $('#sync-on').style.display = on ? '' : 'none';
+  if (!on) $('#sync-repo').value = Sync.cfg()?.repo || 'HSIN-PAI/carlog-data';
+  else $('#sync-repo-label').textContent = Sync.cfg().repo;
+  $('#sync-status').textContent = Sync.statusText();
 }
 
 /* ---------- navigation ---------- */
@@ -497,8 +514,8 @@ function saveExpense() {
   if (!date) return toast('請選日期');
   const kwh = cat === 'charging' ? (parseFloat($('#exp-kwh').value) || null) : null;
   const note = $('#exp-note').value.trim();
-  if (editingExpense) Object.assign(editingExpense, { category: cat, amount, date, note, kwh });
-  else state.expenses.push({ id: uid(), category: cat, amount, date, note, kwh });
+  if (editingExpense) Object.assign(editingExpense, { category: cat, amount, date, note, kwh, updatedAt: Date.now() });
+  else state.expenses.push({ id: uid(), category: cat, amount, date, note, kwh, updatedAt: Date.now() });
   localStorage.setItem('carlog.lastCat', cat);
   save(); closeSheets(); render(); toast(editingExpense ? '已更新' : '已新增');
 }
@@ -516,8 +533,8 @@ function saveOdo() {
   const date = $('#odo-date').value;
   if (!(km >= 0)) return toast('請輸入里程');
   if (!date) return toast('請選日期');
-  if (editingOdo) Object.assign(editingOdo, { km, date });
-  else state.odometer.push({ id: uid(), km, date });
+  if (editingOdo) Object.assign(editingOdo, { km, date, updatedAt: Date.now() });
+  else state.odometer.push({ id: uid(), km, date, updatedAt: Date.now() });
   save(); closeSheets(); render(); toast('已記錄里程');
 }
 
@@ -544,6 +561,130 @@ function importJSON(file) {
   reader.readAsText(file);
 }
 
+/* ---------- 雲端同步(GitHub 私有 repo 的 carlog.json) ---------- */
+const Sync = (() => {
+  const KEY = 'carlog.sync';
+  const UI_PREFS = ['includePrice', 'chartWindow', 'statsPeriod'];
+  let cfg = null;
+  try { cfg = JSON.parse(localStorage.getItem(KEY)) || null; } catch { cfg = null; }
+  let timer = null, busy = false, dirty = false, queued = false;
+  let status = { state: 'off', msg: '' };
+
+  const enabled = () => !!(cfg && cfg.token && cfg.repo);
+  function saveCfg() { if (cfg) localStorage.setItem(KEY, JSON.stringify(cfg)); else localStorage.removeItem(KEY); }
+  function setStatus(st, msg) { status = { state: st, msg }; if (currentView === 'settings') $('#sync-status').textContent = statusText(); if (currentView === 'home') { const el = $('#home-sync'); if (el) { el.textContent = icon(); el.title = statusText(); } } }
+  function statusText() {
+    if (!enabled()) return '尚未連線。';
+    const t = cfg.lastSync ? new Date(cfg.lastSync).toLocaleString('zh-TW', { hour12: false }) : '從未';
+    if (status.state === 'syncing') return '同步中…';
+    if (status.state === 'error') return `同步失敗:${status.msg}(上次成功:${t})`;
+    if (dirty) return `有未同步的變更(上次成功:${t})`;
+    return `已同步 · ${t}`;
+  }
+  function icon() { return status.state === 'error' ? '☁️⚠️' : status.state === 'syncing' || dirty ? '☁️…' : '☁️✓'; }
+
+  function b64enc(str) { const bytes = new TextEncoder().encode(str); let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); }
+  function b64dec(b64) { const bin = atob(b64.replace(/\s/g, '')); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
+  function api(path, opts = {}) {
+    return fetch(`https://api.github.com/repos/${cfg.repo}/${path}`, {
+      ...opts, cache: 'no-store',
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) },
+    });
+  }
+  async function pull() {
+    const r = await api(`contents/carlog.json?ref=main`);
+    if (r.status === 404) return { sha: null, data: null };
+    if (r.status === 401) throw new Error('token 無效或已過期');
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    const j = await r.json();
+    let data = null;
+    try { data = JSON.parse(b64dec(j.content)); } catch { data = null; }
+    return { sha: j.sha, data };
+  }
+  async function push(sha) {
+    const body = { message: `carlog ${new Date().toLocaleString('zh-TW', { hour12: false })}`, content: b64enc(JSON.stringify(state, null, 1)), branch: 'main' };
+    if (sha) body.sha = sha;
+    const r = await api('contents/carlog.json', { method: 'PUT', body: JSON.stringify(body) });
+    if (r.status === 409 || r.status === 422) return false; // sha 衝突:別的裝置剛推過
+    if (r.status === 401) throw new Error('token 無效或已過期');
+    if (r.status === 403 || r.status === 404) throw new Error('token 沒有這個 repo 的寫入權限');
+    if (!r.ok) throw new Error(`GitHub ${r.status}`);
+    return true;
+  }
+  const canon = x => JSON.stringify(normalize(JSON.parse(JSON.stringify(x))));
+
+  function mergeItems(a, b, deleted) {
+    const map = new Map();
+    for (const x of [...a, ...b]) { const cur = map.get(x.id); if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) map.set(x.id, x); }
+    return [...map.values()].filter(x => !(deleted[x.id] && deleted[x.id] >= (x.updatedAt || 0)));
+  }
+  // 把 remote 合併進 state;回傳 state 是否被改到
+  function mergeRemote(remote) {
+    const before = canon(state);
+    const deleted = { ...state.deleted };
+    for (const [id, ts] of Object.entries(remote.deleted || {})) deleted[id] = Math.max(deleted[id] || 0, ts);
+    const merged = normalize(JSON.parse(JSON.stringify(state)));
+    merged.deleted = deleted;
+    merged.expenses = mergeItems(state.expenses, remote.expenses, deleted);
+    merged.odometer = mergeItems(state.odometer, remote.odometer, deleted);
+    const remoteHasCar = !!remote.car?.deliveryDate;
+    if (remoteHasCar && (remote.meta?.updatedAt || 0) > (state.meta?.updatedAt || 0) || (remoteHasCar && !state.car.deliveryDate)) {
+      merged.car = { ...remote.car };
+      const prefs = Object.fromEntries(UI_PREFS.map(k => [k, state.settings[k]]));
+      merged.settings = { ...merged.settings, ...remote.settings, ...prefs };
+      merged.meta = { updatedAt: remote.meta?.updatedAt || 0 };
+    }
+    const changed = canon(merged) !== before;
+    if (changed) { state = merged; localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    return changed;
+  }
+
+  async function syncNow(opts = {}) {
+    if (!enabled()) return;
+    if (busy) { queued = true; return; }
+    busy = true; setStatus('syncing', '');
+    try {
+      let ok = false;
+      for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+        const remote = await pull();
+        let localChanged = false;
+        if (remote.data) localChanged = mergeRemote(normalize(remote.data));
+        if (localChanged) { render(); if (opts.announce) toast('已從雲端更新'); }
+        const needPush = !remote.data || canon(remote.data) !== canon(state);
+        if (!needPush) { ok = true; break; }
+        ok = await push(remote.sha);
+      }
+      if (!ok) throw new Error('多次衝突,稍後再試');
+      dirty = false; cfg.lastSync = Date.now(); saveCfg();
+      setStatus('ok', '');
+    } catch (e) {
+      setStatus('error', e.message);
+      if (opts.announce) toast('同步失敗:' + e.message);
+    } finally {
+      busy = false;
+      if (queued) { queued = false; syncNow(); }
+    }
+  }
+  function schedulePush() {
+    if (!enabled()) return;
+    dirty = true; setStatus(status.state === 'error' ? 'error' : 'ok', status.msg);
+    clearTimeout(timer); timer = setTimeout(() => syncNow(), 1500);
+  }
+  async function connect(repo, token) {
+    cfg = { repo: repo.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''), token: token.trim(), lastSync: 0 };
+    saveCfg(); dirty = true;
+    await syncNow({ announce: true });
+    if (status.state === 'error') { cfg = null; saveCfg(); dirty = false; }
+    return status.state !== 'error';
+  }
+  function disconnect() { cfg = null; saveCfg(); dirty = false; status = { state: 'off', msg: '' }; }
+
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && enabled()) syncNow(); });
+  window.addEventListener('online', () => { if (enabled() && dirty) syncNow(); });
+
+  return { enabled, cfg: () => cfg, statusText, icon, syncNow, schedulePush, connect, disconnect };
+})();
+
 /* ---------- events ---------- */
 function bind() {
   // nav
@@ -563,7 +704,7 @@ function bind() {
     state.car.deliveryDate = date;
     state.car.deliveryOdo = parseFloat($('#ob-odo').value) || 0;
     const price = parseFloat($('#ob-price').value);
-    if (price > 0 && !state.expenses.some(e => e.category === 'price')) state.expenses.push({ id: uid(), category: 'price', amount: price, date, note: '', kwh: null });
+    if (price > 0 && !state.expenses.some(e => e.category === 'price')) state.expenses.push({ id: uid(), category: 'price', amount: price, date, note: '', kwh: null, updatedAt: Date.now() });
     save(); show('home'); toast('開始記錄吧!');
   });
 
@@ -593,6 +734,7 @@ function bind() {
   $('#exp-amount').addEventListener('keydown', ev => { if (ev.key === 'Enter') saveExpense(); });
   $('#exp-delete').addEventListener('click', () => {
     if (!editingExpense || !confirm('刪除這筆支出?')) return;
+    state.deleted[editingExpense.id] = Date.now();
     state.expenses = state.expenses.filter(x => x !== editingExpense);
     save(); closeSheets(); render(); toast('已刪除');
   });
@@ -601,6 +743,7 @@ function bind() {
   $('#odo-save').addEventListener('click', saveOdo);
   $('#odo-delete').addEventListener('click', () => {
     if (!editingOdo || !confirm('刪除這筆里程?')) return;
+    state.deleted[editingOdo.id] = Date.now();
     state.odometer = state.odometer.filter(x => x !== editingOdo);
     save(); closeSheets(); render(); toast('已刪除');
   });
@@ -628,6 +771,21 @@ function bind() {
     state.car.deliveryOdo = parseFloat($('#set-odo').value) || 0;
     save(); renderSettings(); toast('已儲存');
   });
+  $('#sync-connect').addEventListener('click', async () => {
+    const repo = $('#sync-repo').value, token = $('#sync-token').value;
+    if (!repo.includes('/')) return toast('Repo 格式:帳號/repo 名');
+    if (!token) return toast('請貼上 token');
+    $('#sync-connect').disabled = true; $('#sync-connect').textContent = '連線中…';
+    const ok = await Sync.connect(repo, token);
+    $('#sync-connect').disabled = false; $('#sync-connect').textContent = '連線並同步';
+    if (ok) { $('#sync-token').value = ''; toast('雲端同步已開啟'); }
+    if (state.car.deliveryDate && currentView !== 'home') show('settings'); else renderSettings();
+  });
+  $('#sync-now').addEventListener('click', async () => { await Sync.syncNow({ announce: true }); renderSettings(); });
+  $('#sync-disconnect').addEventListener('click', () => {
+    if (!confirm('中斷同步?這台裝置的資料會保留,只是不再上傳;token 會從這台裝置移除。')) return;
+    Sync.disconnect(); renderSettings(); toast('已中斷同步');
+  });
   $('#btn-export').addEventListener('click', exportJSON);
   $('#btn-import').addEventListener('click', () => $('#file-import').click());
   $('#file-import').addEventListener('change', ev => { const f = ev.target.files[0]; if (f) importJSON(f); ev.target.value = ''; });
@@ -641,3 +799,4 @@ function bind() {
 /* ---------- init ---------- */
 bind();
 show(state.car.deliveryDate ? 'home' : 'onboard');
+if (Sync.enabled()) Sync.syncNow().then(() => { if (state.car.deliveryDate && currentView === 'onboard') show('home'); });
