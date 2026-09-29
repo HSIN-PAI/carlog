@@ -53,11 +53,11 @@
     .hero .big small { font-size: 0.4em; color: var(--muted); font-weight: 600; margin-left: 4px; letter-spacing: 0; }
     .hero .sub { color: var(--muted); font-size: 0.85em; }
     .hero .sub b { color: var(--text); font-weight: 600; }
-    .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
     .stat-row.three { grid-template-columns: 1fr 1fr 1fr; }
-    .stat { background: var(--card-2); border-radius: 10px; padding: 10px 12px; }
+    .stat { background: var(--card-2); border-radius: 10px; padding: 10px 12px; min-width: 0; }
     .stat .k { color: var(--muted); font-size: 0.75em; }
-    .stat .v { font-size: 1.1em; font-weight: 700; margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .stat .v { font-size: clamp(0.9em, 4.2vw, 1.1em); font-weight: 700; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
     .stat .v.good { color: var(--accent); }
     .stat .v.bad { color: var(--danger); }
     .seg { display: inline-flex; background: var(--card-2); border-radius: 10px; padding: 3px; gap: 2px; }
