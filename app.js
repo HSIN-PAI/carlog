@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.4.2';
+const VERSION = 'v0.4.3';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -359,13 +359,15 @@ function itemHTML(e) {
   </div>`;
 }
 
-let expFilter = 'all';
+let expFilter = 'all', expQuery = '';
 function renderExpenses() {
   const all = [...state.expenses].sort((a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
-  $('#exp-count').textContent = `${all.length} 筆 · 共 ${fmt(sum(all))} 元`;
   const filters = [['all', '全部'], ...Object.entries(GROUPS)];
   $('#exp-filter').innerHTML = filters.map(([k, v]) => `<span class="chip ${expFilter === k ? 'on' : ''}" data-f="${k}">${v}</span>`).join('');
-  const list = expFilter === 'all' ? all : all.filter(e => CAT[e.category].group === expFilter);
+  const q = expQuery.trim().toLowerCase();
+  let list = expFilter === 'all' ? all : all.filter(e => CAT[e.category].group === expFilter);
+  if (q) list = list.filter(e => (e.note || '').toLowerCase().includes(q) || CAT[e.category].name.includes(q));
+  $('#exp-count').textContent = (q || expFilter !== 'all') ? `符合 ${list.length} 筆 · 共 ${fmt(sum(list))} 元` : `${all.length} 筆 · 共 ${fmt(sum(all))} 元`;
   if (!list.length) { $('#exp-list').innerHTML = '<div class="empty">沒有符合的支出</div>'; return; }
   const groups = {};
   for (const e of list) (groups[monthKey(e.date)] ||= []).push(e);
@@ -764,6 +766,7 @@ function bind() {
     if (od) { const o = state.odometer.find(x => x.id === od.dataset.odo); if (o) openOdo(o); }
   });
   $('#exp-filter').addEventListener('click', ev => { const c = ev.target.closest('.chip'); if (!c) return; expFilter = c.dataset.f; renderExpenses(); });
+  $('#exp-search').addEventListener('input', ev => { expQuery = ev.target.value; renderExpenses(); });
 
   // expense sheet
   $('#exp-cats').addEventListener('click', ev => {
