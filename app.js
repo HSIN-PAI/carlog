@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.5.1';
+const VERSION = 'v0.5.2';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -699,10 +699,17 @@ async function publishShare(json) {
   if (!Sync.enabled()) { shareFallbackReason = '尚未連線雲端同步'; return null; }
   try {
     const id = await shareId(json);
-    const r = await Sync.gh(`repos/${SHARE_REPO}/contents/shares/${id}.json`, {
-      method: 'PUT', body: JSON.stringify({ message: `share ${id}`, content: b64u.enc(json), branch: 'main' }),
-    });
-    if (r.ok || r.status === 422) return id;   // 422:同一份快照已存在,直接沿用
+    const path = `repos/${SHARE_REPO}/contents/shares/${id}.json`;
+    const stdB64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)));   // GitHub 只收標準 base64
+    const r = await Sync.gh(path, { method: 'PUT', body: JSON.stringify({ message: `share ${id}`, content: stdB64, branch: 'main' }) });
+    if (r.ok) return id;
+    if (r.status === 422) {   // 可能是同一份快照已存在;查一次確認,不能只憑狀態碼
+      const chk = await Sync.gh(path);
+      if (chk.ok) return id;
+      let msg = ''; try { msg = (await r.json()).message || ''; } catch {}
+      shareFallbackReason = `GitHub 422 ${msg}`.trim();
+      return null;
+    }
     shareFallbackReason = (r.status === 403 || r.status === 404) ? `token 沒有 ${SHARE_REPO} 的寫入權限` : `GitHub ${r.status}`;
   } catch (e) { shareFallbackReason = e.message; }
   return null;
