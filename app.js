@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.4.0';
+const VERSION = 'v0.4.1';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
