@@ -32,7 +32,7 @@ def dict_value(items):
             'WFSerializationType': 'WFDictionaryFieldValue'}
 
 # 0 token(匯入時會問)
-TOKEN = act('is.workflow.actions.gettext', {'WFTextActionText': '請在這裡貼上 GitHub token'}, 'GitHub token')
+TOKEN = act('is.workflow.actions.gettext', {'WFTextActionText': '把這行換成你的 GitHub token'}, 'GitHub token')
 # 1 通知 → 文字
 TEXT = act('is.workflow.actions.detect.text', {'WFInput': shortcut_input()}, '通知文字')
 # 2-4 度數
@@ -69,13 +69,12 @@ wf = {
     'WFWorkflowClientVersion': '2607.1.3',
     'WFWorkflowMinimumClientVersion': 900,
     'WFWorkflowMinimumClientVersionString': '900',
-    'WFWorkflowIcon': {'WFWorkflowIconStartColor': 431817727, 'WFWorkflowIconGlyphNumber': 59771},
+    'WFWorkflowIcon': {'WFWorkflowIconStartColor': 4282601983, 'WFWorkflowIconGlyphNumber': 59511},
     'WFWorkflowTypes': [],
     'WFWorkflowInputContentItemTypes': ['WFStringContentItem', 'WFRichTextContentItem', 'WFURLContentItem', 'WFGenericFileContentItem'],
     'WFWorkflowHasShortcutInputVariables': True,
     'WFWorkflowHasOutputFallback': False,
-    'WFWorkflowImportQuestions': [{'ActionIndex': 0, 'Category': 'Parameter', 'ParameterKey': 'WFTextActionText',
-                                   'Text': '貼上你的 GitHub token(CarLog App → 設定 → 雲端同步 → 複製 token)', 'DefaultValue': ''}],
+    'WFWorkflowImportQuestions': [],
     'WFWorkflowActions': actions,
 }
 with open('CarLog充電記帳.unsigned.shortcut', 'wb') as f: plistlib.dump(wf, f)
