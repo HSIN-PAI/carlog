@@ -18,6 +18,8 @@ def ref(u, name):  # 引用某動作的輸出
     return {'Value': {'OutputUUID': u, 'OutputName': name, 'Type': 'ActionOutput'}, 'WFSerializationType': 'WFTextTokenAttachment'}
 def shortcut_input():
     return {'Value': {'Type': 'ExtensionInput'}, 'WFSerializationType': 'WFTextTokenAttachment'}
+def current_date():
+    return {'Value': {'Type': 'CurrentDate'}, 'WFSerializationType': 'WFTextTokenAttachment'}
 def tok(*parts):
     """文字 token:parts 是 str 或 (uuid, name) 的混合。"""
     s, att = '', {}
@@ -39,13 +41,13 @@ TEXT = act('is.workflow.actions.detect.text', {'WFInput': shortcut_input()}, '�
 M_KWH = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '([0-9.]+)度', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '度數比對')
 G_KWH = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_KWH, '度數比對')}, '各段度數')
 KWH = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'Input': ref(G_KWH, '各段度數')}, '度數')
-# 5-6 金額
-M_AMT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '總計:\\s*([0-9]+)', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '總計比對')
-AMT = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_AMT, '總計比對')}, '金額')
-# 7-9 日期
-NOW = act('is.workflow.actions.date', {'WFDateActionMode': 'Current Date'}, '現在')
-DATE = act('is.workflow.actions.format.date', {'WFDateFormatStyle': 'Custom', 'WFDateFormat': 'yyyy-MM-dd', 'WFDate': ref(NOW, '現在')}, '日期')
-FNAME = act('is.workflow.actions.format.date', {'WFDateFormatStyle': 'Custom', 'WFDateFormat': 'yyyyMMdd-HHmmss', 'WFDate': ref(NOW, '現在')}, '檔名')
+# 5-7 金額:每段「= N 元」加總(等於總計;不依賴「總計」那行的冒號全半形,通知被截斷也能部分計算)
+M_AMT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '=\\s*([0-9]+)\\s*元', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '金額比對')
+G_AMT = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_AMT, '金額比對')}, '各段金額')
+AMT = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'Input': ref(G_AMT, '各段金額')}, '金額')
+# 8-9 日期(用內建「目前日期」變數,不另加日期動作)
+DATE = act('is.workflow.actions.format.date', {'WFDateFormatStyle': 'Custom', 'WFDateFormat': 'yyyy-MM-dd', 'WFDate': current_date()}, '日期')
+FNAME = act('is.workflow.actions.format.date', {'WFDateFormatStyle': 'Custom', 'WFDateFormat': 'yyyyMMdd-HHmmss', 'WFDate': current_date()}, '檔名')
 # 10 支出 JSON
 ITEM = act('is.workflow.actions.dictionary', {'WFItems': dict_value([
     ('amount', tok((AMT, '金額'))), ('kwh', tok((KWH, '度數'))), ('category', 'charging'),
