@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.6.1';
+const VERSION = 'v0.6.2';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -624,14 +624,16 @@ const Sync = (() => {
     if (!Array.isArray(list)) return 0;
     let added = 0;
     for (const f of list) {
-      if (!f.name || !f.name.endsWith('.json')) continue;
+      if (!f.name || f.type === 'dir') continue;
       try {
         const r = await api(`contents/inbox/${encodeURIComponent(f.name)}?ref=main`);
         if (!r.ok) continue;
         const j = await r.json();
         const item = JSON.parse(b64dec(j.content));
+        const innerId = String(item.id || '').replace(/[^\w-]/g, '');
         const safeName = f.name.replace(/\.json$/, '').replace(/[^\w-]/g, '');
-        const id = 'inbox-' + (safeName || String(j.sha || '').slice(0, 12));   // 檔名空白時改用內容 sha,避免撞 id
+        // 去重鍵:優先用 JSON 內的 id(捷徑重傳同一筆會帶同樣的 id),否則用檔名,再不然用 sha
+        const id = 'inbox-' + (innerId || safeName || String(j.sha || '').slice(0, 12));
         const amount = Math.round(parseFloat(item.amount));
         if (!(amount >= 0)) throw new Error('amount');
         const category = CAT[item.category] ? item.category : 'charging';

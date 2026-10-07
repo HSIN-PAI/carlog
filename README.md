@@ -173,14 +173,21 @@ App 下次同步時會把它轉成支出並刪掉檔案。支出 id 由檔名決
 
 **前置**:LINE 設定 → 通知 → 「顯示訊息內容」要開,通知裡才有文字可解析。
 
-**最快的做法:直接安裝做好的捷徑**(由 `shortcut/build_shortcut.py` 產生、已簽章;2026-10-07 v5 實測在 iOS 27 可用):
+**停車場沒訊號怎麼辦**:通知多半在 B4 收到,當場上傳會 timeout。所以拆成兩個捷徑:
+A「CarLog充電記帳」收到通知時只把 JSON 存進手機 `CarLog/pending/`(不上網,不會失敗);
+B「CarLog上傳」在連上家裡 Wi‑Fi 或每天固定時間跑,把 pending 逐一上傳、成功才刪本機檔,失敗就留著下次再傳。
+JSON 內帶 `id`,重傳同一筆 App 會去重。
 
-1. iPhone Safari 開 <https://hsin-pai.github.io/carlog/shortcut/CarLog%E5%85%85%E9%9B%BB%E8%A8%98%E5%B8%B3.shortcut> → 下載 → 在「下載項目」點開 → 捷徑 App 會問要不要加入 → 它會先問你 **GitHub token**,貼上(CarLog App → 設定 → 雲端同步 → 複製 token)→ 加入捷徑
-2. 捷徑 App → **自動化** → 右上 **+** → 選「**收到通知時**」→ App 選 **LINE** → 訊息「包含」填 `充電扣款` → 選「**立即執行**」→ 捷徑選 **CarLog充電記帳**(iOS 27 會把觸發條件顯示成捷徑的第一格)
-3. 打開捷徑確認第二格「文字」裡的「捷徑輸入」類型是「通知」、取得「內文」;不是的話點它改成這樣(通常檔案已帶好,不用動)
+**安裝(兩個都要,已簽章、2026-10-08 版)**
 
-之後每次 LINE 跳出充電扣款通知,幾秒後會再跳一則「CarLog 已記帳:充電 45 元,12.2 度」,開 App 就同步進來。
-測試不用等充電:把那則通知在 LINE 轉傳給自己即可。
+1. iPhone Safari 下載並加入:
+   - A:<https://hsin-pai.github.io/carlog/shortcut/CarLog%E5%85%85%E9%9B%BB%E8%A8%98%E5%B8%B3.shortcut>(不用填任何東西)
+   - B:<https://hsin-pai.github.io/carlog/shortcut/CarLog%E4%B8%8A%E5%82%B3.shortcut>(會問 GitHub token,從 CarLog App → 設定 → 雲端同步 → 複製 token 貼上)
+2. A 的觸發:自動化 → **+** → 「收到通知時」→ App 選 **LINE** → 訊息包含 `充電扣款` → 立即執行 → 選 **CarLog充電記帳**
+3. B 的觸發(建兩個都指向 CarLog上傳,都選立即執行):
+   - 自動化 → **+** → 「Wi‑Fi」→ 選家裡的 Wi‑Fi → 連接時
+   - 自動化 → **+** → 「特定時間」→ 每天,例如 21:00
+4. 測試:B4 收到通知後會跳「CarLog 已暫存」;回到家連上 Wi‑Fi 會跳「CarLog 已上傳」;開 App 會「已從 inbox 記入 1 筆」。
 
 **自己手動拼的話**:捷徑 App → 自動化 → 新增 → 選「收到通知時」→ App 選 **LINE** → 內容「包含」填 `充電扣款` →
 「立即執行」打開 → 下一步 → 新增空白捷徑,依序加入以下動作:
