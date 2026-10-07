@@ -22,7 +22,10 @@ def input_body_tok():
     """文字 token:捷徑輸入 › Body(iOS 27 通知觸發時,通知內容在 Shortcut Input 的 Body 屬性)"""
     return {'Value': {'string': '\ufffc', 'attachmentsByRange': {'{0, 1}': {
         'Type': 'ExtensionInput',
-        'Aggrandizements': [{'Type': 'WFPropertyVariableAggrandizement', 'PropertyName': 'Body'}],
+        'Aggrandizements': [
+            {'Type': 'WFCoercionVariableAggrandizement', 'CoercionItemClass': 'WFNotificationContentItem'},
+            {'Type': 'WFPropertyVariableAggrandizement', 'PropertyName': 'Body'},
+        ],
     }}}, 'WFSerializationType': 'WFTextTokenString'}
 def current_date():
     return {'Value': {'Type': 'CurrentDate'}, 'WFSerializationType': 'WFTextTokenAttachment'}
@@ -44,11 +47,11 @@ TOKEN = act('is.workflow.actions.gettext', {'WFTextActionText': '把這行換成
 # 1 通知內容 → 文字(用「文字」動作內插 捷徑輸入 › Body)
 TEXT = act('is.workflow.actions.gettext', {'WFTextActionText': input_body_tok()}, '通知文字')
 # 2-4 度數
-M_KWH = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '([0-9.]+)度', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '度數比對')
+M_KWH = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '([0-9.]+)度', 'WFMatchTextCaseSensitive': False, 'text': tok((TEXT, '通知文字'))}, '度數比對')
 G_KWH = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_KWH, '度數比對')}, '各段度數')
 KWH = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'Input': ref(G_KWH, '各段度數')}, '度數')
 # 5-7 金額:每段「= N 元」加總(等於總計;不依賴「總計」那行的冒號全半形,通知被截斷也能部分計算)
-M_AMT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '=\\s*([0-9]+)\\s*元', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '金額比對')
+M_AMT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '=\\s*([0-9]+)\\s*元', 'WFMatchTextCaseSensitive': False, 'text': tok((TEXT, '通知文字'))}, '金額比對')
 G_AMT = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_AMT, '金額比對')}, '各段金額')
 AMT = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'Input': ref(G_AMT, '各段金額')}, '金額')
 # 8 檔名:亂數(「格式化日期」在產生的捷徑裡沒有輸出,改不依賴它;日期由 App 以提交時間判定)
@@ -78,7 +81,7 @@ wf = {
     'WFWorkflowMinimumClientVersionString': '900',
     'WFWorkflowIcon': {'WFWorkflowIconStartColor': 4282601983, 'WFWorkflowIconGlyphNumber': 59511},
     'WFWorkflowTypes': [],
-    'WFWorkflowInputContentItemTypes': ['WFStringContentItem', 'WFRichTextContentItem', 'WFURLContentItem', 'WFGenericFileContentItem'],
+    'WFWorkflowInputContentItemTypes': ['WFNotificationContentItem', 'WFStringContentItem', 'WFRichTextContentItem'],
     'WFWorkflowHasShortcutInputVariables': True,
     'WFWorkflowHasOutputFallback': False,
     'WFWorkflowImportQuestions': [],
