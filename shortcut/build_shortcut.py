@@ -18,6 +18,12 @@ def ref(u, name):  # 引用某動作的輸出
     return {'Value': {'OutputUUID': u, 'OutputName': name, 'Type': 'ActionOutput'}, 'WFSerializationType': 'WFTextTokenAttachment'}
 def shortcut_input():
     return {'Value': {'Type': 'ExtensionInput'}, 'WFSerializationType': 'WFTextTokenAttachment'}
+def input_body_tok():
+    """文字 token:捷徑輸入 › Body(iOS 27 通知觸發時,通知內容在 Shortcut Input 的 Body 屬性)"""
+    return {'Value': {'string': '\ufffc', 'attachmentsByRange': {'{0, 1}': {
+        'Type': 'ExtensionInput',
+        'Aggrandizements': [{'Type': 'WFPropertyVariableAggrandizement', 'PropertyName': 'Body'}],
+    }}}, 'WFSerializationType': 'WFTextTokenString'}
 def current_date():
     return {'Value': {'Type': 'CurrentDate'}, 'WFSerializationType': 'WFTextTokenAttachment'}
 def tok(*parts):
@@ -35,8 +41,8 @@ def dict_value(items):
 
 # 0 token(匯入時會問)
 TOKEN = act('is.workflow.actions.gettext', {'WFTextActionText': '把這行換成你的 GitHub token'}, 'GitHub token')
-# 1 通知 → 文字
-TEXT = act('is.workflow.actions.detect.text', {'WFInput': shortcut_input()}, '通知文字')
+# 1 通知內容 → 文字(用「文字」動作內插 捷徑輸入 › Body)
+TEXT = act('is.workflow.actions.gettext', {'WFTextActionText': input_body_tok()}, '通知文字')
 # 2-4 度數
 M_KWH = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '([0-9.]+)度', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '度數比對')
 G_KWH = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_KWH, '度數比對')}, '各段度數')
