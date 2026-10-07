@@ -173,11 +173,11 @@ App 下次同步時會把它轉成支出並刪掉檔案。支出 id 由檔名決
 
 **前置**:LINE 設定 → 通知 → 「顯示訊息內容」要開,通知裡才有文字可解析。
 
-**最快的做法:直接安裝做好的捷徑**(由 `shortcut/build_shortcut.py` 產生、已簽章):
+**最快的做法:直接安裝做好的捷徑**(由 `shortcut/build_shortcut.py` 產生、已簽章;2026-10-07 v5 實測在 iOS 27 可用):
 
 1. iPhone Safari 開 <https://hsin-pai.github.io/carlog/shortcut/CarLog%E5%85%85%E9%9B%BB%E8%A8%98%E5%B8%B3.shortcut> → 下載 → 在「下載項目」點開 → 捷徑 App 會問要不要加入 → 它會先問你 **GitHub token**,貼上(CarLog App → 設定 → 雲端同步 → 複製 token)→ 加入捷徑
-2. 捷徑 App → **自動化** → 右上 **+** → 選「**收到通知時**」→ App 選 **LINE** → 訊息「包含」填 `充電扣款` → 選「**立即執行**」→ 下一步
-3. 動作搜尋「**執行捷徑**」→ 捷徑選 **CarLog充電記帳** → 「輸入」那格點一下,選「**通知**」→ 完成
+2. 捷徑 App → **自動化** → 右上 **+** → 選「**收到通知時**」→ App 選 **LINE** → 訊息「包含」填 `充電扣款` → 選「**立即執行**」→ 捷徑選 **CarLog充電記帳**(iOS 27 會把觸發條件顯示成捷徑的第一格)
+3. 打開捷徑確認第二格「文字」裡的「捷徑輸入」類型是「通知」、取得「內文」;不是的話點它改成這樣(通常檔案已帶好,不用動)
 
 之後每次 LINE 跳出充電扣款通知,幾秒後會再跳一則「CarLog 已記帳:充電 45 元,12.2 度」,開 App 就同步進來。
 測試不用等充電:把那則通知在 LINE 轉傳給自己即可。
@@ -203,7 +203,11 @@ App 下次同步時會把它轉成支出並刪掉檔案。支出 id 由檔名決
 token 就是 App「設定 → 雲端同步 → 複製 token」那一把。存好後,下次充電完通知一跳出來,幾秒內 `carlog-data/inbox/` 就會多一個檔;
 手機或電腦 App 下次開啟時會顯示「已從 inbox 記入 1 筆」。要測試不用等充電:在 LINE 把那則通知轉傳給自己,通知一樣會觸發。
 
-若通知被 LINE 截斷導致找不到「總計」,動作 5 會是空的,App 會把該檔留在 inbox 不記帳;這時改用「= ([0-9]+) 元」加總當退路。
+金額是把每段「= N 元」加總(等於總計,通知被截斷也能部分計算);檔名用亂數,日期由 App 以該檔的提交時間判定。
+
+產生器備註(`shortcut/build_shortcut.py`):字串型參數(如比對文字的 `text`、`WFTextActionText`)要用 WFTextTokenString 內嵌變數,
+不能直接放 WFTextTokenAttachment,否則會被當成沒設定而在執行時跳出輸入框。iOS 27 的通知內容透過捷徑輸入傳入,
+類別 `WFNotificationContentItem`、內文屬性 `Body`。各動作參數鍵名可查 viticci/shortcuts-playground-plugin 的 `data/toolkit-v78-*.json`。
 
 ## 改完程式要做的事
 
