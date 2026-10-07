@@ -98,6 +98,7 @@ Claude 也可以直接改 `carlog-data` 的 `carlog.json`(例如幫忙從單據�
 | `index.html` | 頁面骨架與樣式(深色主題、行動優先) |
 | `app.js` | 全部邏輯:狀態與 localStorage、每日成本序列、里程內插、SVG 圖表(手刻,無外部套件)、GitHub 同步 |
 | `manifest.json`、`icon-*.png`、`apple-touch-icon.png` | 加到主畫面用 |
+| `shortcut/build_shortcut.py` | 產生 iOS 捷徑「CarLog充電記帳」的 plist;改完要 `shortcuts sign --mode anyone` 重新簽章 |
 
 資料格式(localStorage key `carlog.v1`):
 
@@ -172,8 +173,17 @@ App 下次同步時會把它轉成支出並刪掉檔案。支出 id 由檔名決
 
 **前置**:LINE 設定 → 通知 → 「顯示訊息內容」要開,通知裡才有文字可解析。
 
-**建立自動化**:捷徑 App → 自動化 → 新增 → 選「收到通知時」→ App 選 **LINE** → 內容「包含」填 `充電扣款` →
-「立即執行」打開(不要選執行前先詢問)→ 下一步 → 新增空白捷徑,依序加入以下動作:
+**最快的做法:直接安裝做好的捷徑**(由 `shortcut/build_shortcut.py` 產生、已簽章):
+
+1. iPhone Safari 開 <https://hsin-pai.github.io/carlog/shortcut/CarLog%E5%85%85%E9%9B%BB%E8%A8%98%E5%B8%B3.shortcut> → 下載 → 在「下載項目」點開 → 捷徑 App 會問要不要加入 → 它會先問你 **GitHub token**,貼上(CarLog App → 設定 → 雲端同步 → 複製 token)→ 加入捷徑
+2. 捷徑 App → **自動化** → 右上 **+** → 選「**收到通知時**」→ App 選 **LINE** → 訊息「包含」填 `充電扣款` → 選「**立即執行**」→ 下一步
+3. 動作搜尋「**執行捷徑**」→ 捷徑選 **CarLog充電記帳** → 「輸入」那格點一下,選「**通知**」→ 完成
+
+之後每次 LINE 跳出充電扣款通知,幾秒後會再跳一則「CarLog 已記帳:充電 45 元,12.2 度」,開 App 就同步進來。
+測試不用等充電:把那則通知在 LINE 轉傳給自己即可。
+
+**自己手動拼的話**:捷徑 App → 自動化 → 新增 → 選「收到通知時」→ App 選 **LINE** → 內容「包含」填 `充電扣款` →
+「立即執行」打開 → 下一步 → 新增空白捷徑,依序加入以下動作:
 
 | # | 動作(搜尋這個名稱) | 設定 |
 |---|---|---|
