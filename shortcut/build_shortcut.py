@@ -45,13 +45,12 @@ KWH = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'In
 M_AMT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '=\\s*([0-9]+)\\s*元', 'WFMatchTextCaseSensitive': False, 'text': ref(TEXT, '通知文字')}, '金額比對')
 G_AMT = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_AMT, '金額比對')}, '各段金額')
 AMT = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'Input': ref(G_AMT, '各段金額')}, '金額')
-# 8-9 日期(用內建「目前日期」變數,不另加日期動作)
-DATE = act('is.workflow.actions.format.date', {'WFDateFormatStyle': 'Custom', 'WFDateFormat': 'yyyy-MM-dd', 'WFDate': current_date()}, '日期')
-FNAME = act('is.workflow.actions.format.date', {'WFDateFormatStyle': 'Custom', 'WFDateFormat': 'yyyyMMdd-HHmmss', 'WFDate': current_date()}, '檔名')
+# 8 檔名:亂數(「格式化日期」在產生的捷徑裡沒有輸出,改不依賴它;日期由 App 以提交時間判定)
+FNAME = act('is.workflow.actions.number.random', {'WFRandomNumberMinimum': 100000000, 'WFRandomNumberMaximum': 999999999}, '檔名')
 # 10 支出 JSON
 ITEM = act('is.workflow.actions.dictionary', {'WFItems': dict_value([
     ('amount', tok((AMT, '金額'))), ('kwh', tok((KWH, '度數'))), ('category', 'charging'),
-    ('date', tok((DATE, '日期'))), ('note', '社區充電樁 自動記帳'),
+    ('note', '社區充電樁 自動記帳'),
 ])}, '支出')
 ITEM_TXT = act('is.workflow.actions.gettext', {'WFTextActionText': tok((ITEM, '支出'))}, '支出 JSON')
 B64 = act('is.workflow.actions.base64encode', {'WFEncodeMode': 'Encode', 'WFBase64LineBreakMode': 'None', 'WFInput': ref(ITEM_TXT, '支出 JSON')}, 'base64')

@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.6.0';
+const VERSION = 'v0.6.1';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -630,11 +630,19 @@ const Sync = (() => {
         if (!r.ok) continue;
         const j = await r.json();
         const item = JSON.parse(b64dec(j.content));
-        const id = 'inbox-' + f.name.replace(/\.json$/, '').replace(/[^\w-]/g, '');
+        const safeName = f.name.replace(/\.json$/, '').replace(/[^\w-]/g, '');
+        const id = 'inbox-' + (safeName || String(j.sha || '').slice(0, 12));   // 檔名空白時改用內容 sha,避免撞 id
         const amount = Math.round(parseFloat(item.amount));
         if (!(amount >= 0)) throw new Error('amount');
         const category = CAT[item.category] ? item.category : 'charging';
-        const date = /^\d{4}-\d{2}-\d{2}$/.test(item.date || '') ? item.date : todayStr();
+        let date = /^\d{4}-\d{2}-\d{2}$/.test(item.date || '') ? item.date : '';
+        if (!date) {   // 沒給日期:用這個檔被建立的提交時間(= 捷徑執行當下),換成本機日期
+          try {
+            const rc = await api(`commits?path=${encodeURIComponent('inbox/' + f.name)}&per_page=1`);
+            if (rc.ok) { const arr = await rc.json(); const iso = arr?.[0]?.commit?.committer?.date; if (iso) { const d = new Date(iso); date = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; } }
+          } catch {}
+          if (!date) date = todayStr();
+        }
         const kwh = category === 'charging' && parseFloat(item.kwh) > 0 ? parseFloat(item.kwh) : null;
         const note = String(item.note || '').slice(0, 200);
         if (!state.expenses.some(e => e.id === id) && !state.deleted[id]) {
