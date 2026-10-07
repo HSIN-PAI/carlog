@@ -140,6 +140,29 @@ token 只存在該裝置的 localStorage;因為它只能讀寫那一個私有 re
 - 推送時若雲端已被別台裝置更新(sha 不符),自動重拉、合併、再推,最多三次
 - 時機:每次儲存後 1.5 秒、App 回到前景時、網路恢復時;失敗會在「設定」顯示原因,下次儲存再試
 
+## 自動記帳入口:`inbox/`(給 iOS 捷徑等外部程式用)
+
+想讓別的程式幫忙記一筆,**不用動 `carlog.json`**,只要在 `carlog-data` 的 `inbox/` 資料夾新增一個 JSON 檔,
+App 下次同步時會把它轉成支出並刪掉檔案。支出 id 由檔名決定,多台裝置同時處理也不會重複。
+
+檔案內容(欄位都是選填,只有 `amount` 必填):
+
+```json
+{ "amount": 123.4, "kwh": 45.2, "category": "charging", "date": "2026-10-07", "note": "家充 自動記帳" }
+```
+
+- `category` 預設 `charging`;其他值見「支出分類」的 id(`accessory`、`parking`…)
+- `date` 格式 `YYYY-MM-DD`,省略就用 App 處理當天
+- 用 GitHub Contents API 建檔(同一把 token):`PUT /repos/HSIN-PAI/carlog-data/contents/inbox/<檔名>.json`,
+  body 是 `{"message":"…","content":"<標準 base64 的 JSON>","branch":"main"}`;檔名建議用時間 `yyyyMMdd-HHmmss`
+- 格式不對(例如 `amount` 不是數字)的檔會被跳過並留在 inbox 讓你檢查
+
+### iOS 27 捷徑:LINE 充電完成通知 → 自動記帳
+
+iOS 27 的捷徑有「收到通知時」觸發,可以指定 App 與內容關鍵字。流程:
+LINE 跳出充電樁的「充電完成」通知 → 捷徑用正規表達式抓出金額與度數 → 組 JSON → base64 → PUT 到 `inbox/`。
+解析規則要依通知的實際文字調整,詳細步驟見捷徑設定(待補)。
+
 ## 改完程式要做的事
 
 `index.html` 裡 `<script src="app.js?v=…">` 的版本號和 `app.js` 開頭的 `VERSION` 一起升,不然 GitHub Pages 的快取會讓使用者拿到新 HTML 配舊 JS。

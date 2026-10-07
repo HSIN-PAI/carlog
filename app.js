@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.5.4';
+const VERSION = 'v0.6.0';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -611,11 +611,49 @@ const Sync = (() => {
     return changed;
   }
 
+  // inbox/:外部(例如 iOS 捷徑)丟進來的待記帳 JSON,每檔一筆;轉成支出後刪檔。
+  // 支出 id 由檔名決定,多台裝置同時處理也不會重複。
+  async function processInbox() {
+    let list;
+    try {
+      const r = await api('contents/inbox?ref=main');
+      if (r.status === 404) return 0;
+      if (!r.ok) return 0;
+      list = await r.json();
+    } catch { return 0; }
+    if (!Array.isArray(list)) return 0;
+    let added = 0;
+    for (const f of list) {
+      if (!f.name || !f.name.endsWith('.json')) continue;
+      try {
+        const r = await api(`contents/inbox/${encodeURIComponent(f.name)}?ref=main`);
+        if (!r.ok) continue;
+        const j = await r.json();
+        const item = JSON.parse(b64dec(j.content));
+        const id = 'inbox-' + f.name.replace(/\.json$/, '').replace(/[^\w-]/g, '');
+        const amount = Math.round(parseFloat(item.amount));
+        if (!(amount >= 0)) throw new Error('amount');
+        const category = CAT[item.category] ? item.category : 'charging';
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(item.date || '') ? item.date : todayStr();
+        const kwh = category === 'charging' && parseFloat(item.kwh) > 0 ? parseFloat(item.kwh) : null;
+        const note = String(item.note || '').slice(0, 200);
+        if (!state.expenses.some(e => e.id === id) && !state.deleted[id]) {
+          state.expenses.push({ id, category, amount, date, note, kwh, updatedAt: Date.now() });
+          added++;
+        }
+        await api(`contents/inbox/${encodeURIComponent(f.name)}`, { method: 'DELETE', body: JSON.stringify({ message: `inbox 已記帳 ${f.name}`, sha: j.sha, branch: 'main' }) });
+      } catch (e) { console.warn('inbox item skipped', f.name, e); }
+    }
+    if (added) { state.meta.updatedAt = Date.now(); localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); dirty = true; render(); toast(`已從 inbox 記入 ${added} 筆`); }
+    return added;
+  }
+
   async function syncNow(opts = {}) {
     if (!enabled()) return;
     if (busy) { queued = true; return; }
     busy = true; setStatus('syncing', '');
     try {
+      await processInbox();
       let ok = false;
       for (let attempt = 0; attempt < 3 && !ok; attempt++) {
         const remote = await pull();
