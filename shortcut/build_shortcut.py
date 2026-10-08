@@ -65,17 +65,22 @@ def shortcut_a(act):
     M_AMT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '=\\s*([0-9]+)\\s*元', 'WFMatchTextCaseSensitive': False, 'text': tok((TEXT, '通知文字'))}, '金額比對')
     G_AMT = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_AMT, '金額比對')}, '各段金額')
     AMT = act('is.workflow.actions.statistics', {'WFStatisticsOperation': 'Sum', 'Input': ref(G_AMT, '各段金額')}, '金額')
+    SEG = act('is.workflow.actions.count', {'WFCountType': 'Items', 'Input': ref(G_AMT, '各段金額')}, '段數')
+    # 「總計: 49 元」那行;通知被截斷時抓不到 → App 會標記請人工確認
+    M_TOT = act('is.workflow.actions.text.match', {'WFMatchTextPattern': '總計[:：]\\s*([0-9]+)', 'WFMatchTextCaseSensitive': False, 'text': tok((TEXT, '通知文字'))}, '總計比對')
+    G_TOT = act('is.workflow.actions.text.match.getgroup', {'WFGetGroupType': 'Group At Index', 'WFGroupIndex': 1, 'matches': ref(M_TOT, '總計比對')}, '總計')
     ID = act('is.workflow.actions.number.random', {'WFRandomNumberMinimum': 100000000, 'WFRandomNumberMaximum': 999999999}, '編號')
     ITEM = act('is.workflow.actions.dictionary', {'WFItems': dict_value([
         ('amount', tok((AMT, '金額'))), ('kwh', tok((KWH, '度數'))), ('category', 'charging'),
         ('note', '社區充電樁 自動記帳'), ('id', tok((ID, '編號'))),
+        ('total', tok((G_TOT, '總計'))), ('segments', tok((SEG, '段數'))),
     ])}, '支出')
     JSON_TXT = act('is.workflow.actions.gettext', {'WFTextActionText': tok((ITEM, '支出'))}, '支出 JSON')
     act('is.workflow.actions.documentpicker.save', {
         'WFInput': ref(JSON_TXT, '支出 JSON'), 'WFAskWhereToSave': False, 'WFSaveFileOverwrite': True,
         'WFFileDestinationPath': tok(f'{PENDING_DIR}/', (ID, '編號'), '.json'),
     }, '暫存檔')
-    act('is.workflow.actions.notification', {'WFNotificationActionTitle': 'CarLog 已暫存', 'WFNotificationActionBody': tok('充電 ', (AMT, '金額'), ' 元,', (KWH, '度數'), ' 度;連上網路後會自動上傳'), 'WFNotificationActionSound': False})
+    act('is.workflow.actions.notification', {'WFNotificationActionTitle': 'CarLog 已暫存', 'WFNotificationActionBody': tok('分段合計 ', (AMT, '金額'), ' 元(', (SEG, '段數'), ' 段,總計行:', (G_TOT, '總計'), '),', (KWH, '度數'), ' 度;連上網路後自動上傳'), 'WFNotificationActionSound': False})
 
 # ================= B:上傳 pending =================
 def shortcut_b(act):

@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.6.2';
+const VERSION = 'v0.6.3';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -634,8 +634,12 @@ const Sync = (() => {
         const safeName = f.name.replace(/\.json$/, '').replace(/[^\w-]/g, '');
         // 去重鍵:優先用 JSON 內的 id(捷徑重傳同一筆會帶同樣的 id),否則用檔名,再不然用 sha
         const id = 'inbox-' + (innerId || safeName || String(j.sha || '').slice(0, 12));
-        const amount = Math.round(parseFloat(item.amount));
+        // amount = 分段加總;total = 通知裡的「總計」行(通知被截斷時不會有)
+        const segSum = Math.round(parseFloat(item.amount));
+        const total = Math.round(parseFloat(item.total));
+        let amount = total > 0 ? total : segSum;
         if (!(amount >= 0)) throw new Error('amount');
+        const truncated = 'total' in item && !(total > 0);   // 捷徑有送 total 欄位但抓不到 → 通知被截斷
         const category = CAT[item.category] ? item.category : 'charging';
         let date = /^\d{4}-\d{2}-\d{2}$/.test(item.date || '') ? item.date : '';
         if (!date) {   // 沒給日期:用這個檔被建立的提交時間(= 捷徑執行當下),換成本機日期
@@ -646,7 +650,9 @@ const Sync = (() => {
           if (!date) date = todayStr();
         }
         const kwh = category === 'charging' && parseFloat(item.kwh) > 0 ? parseFloat(item.kwh) : null;
-        const note = String(item.note || '').slice(0, 200);
+        let note = String(item.note || '').slice(0, 200);
+        if (truncated) note += '(⚠ 通知被截斷,只收到前 ' + (parseInt(item.segments) || '?') + ' 段,金額與度數可能不完整,請對照 LINE 原文修正)';
+        else if (total > 0 && segSum >= 0 && total !== segSum) note += `(分段合計 ${segSum} 與總計 ${total} 不符,以總計為準)`;
         if (!state.expenses.some(e => e.id === id) && !state.deleted[id]) {
           state.expenses.push({ id, category, amount, date, note, kwh, updatedAt: Date.now() });
           added++;
