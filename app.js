@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.6.3';
+const VERSION = 'v0.7.0';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -163,6 +163,7 @@ function monthlyTotals(includePrice, months = 12) {
 }
 function periodFilter(period) {
   const t = todayStr();
+  if (/^\d{4}-\d{2}$/.test(period)) return e => monthKey(e.date) === period;
   if (period === 'month') return e => monthKey(e.date) === monthKey(t);
   if (period === 'year') return e => e.date.slice(0, 4) === t.slice(0, 4);
   return () => true;
@@ -233,8 +234,8 @@ function renderLineChart(svg, data, opts) {
   svg.innerHTML = g;
 }
 
-function renderBarChart(svg, bars) {
-  // bars: [{label, value, hot}]
+function renderBarChart(svg, bars, opts = {}) {
+  // bars: [{label, value, hot, key, selected}];opts.onSelect(key) 讓長條可點
   const W = 520, H = 200, L = 46, R = 10, T = 16, B = 26;
   const iw = W - L - R, ih = H - T - B;
   const max = Math.max(1, ...bars.map(b => b.value));
@@ -252,11 +253,14 @@ function renderBarChart(svg, bars) {
     const x = L + i * slot + (slot - bw) / 2;
     const h = b.value / yMax * ih;
     const y = T + ih - h;
-    g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${b.hot ? '#34d399' : '#3b5580'}"/>`;
-    if (b.value > 0 && h > 2) g += `<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" fill="${b.hot ? '#34d399' : '#8a97b0'}" font-size="10" text-anchor="middle">${shortNum(b.value)}</text>`;
-    g += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" fill="${b.hot ? '#e5eaf3' : '#8a97b0'}" font-size="11" text-anchor="middle">${b.label}</text>`;
+    const fill = b.selected ? '#fbbf24' : b.hot ? '#34d399' : '#3b5580';
+    g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${fill}"/>`;
+    if (b.value > 0 && h > 2) g += `<text x="${(x + bw / 2).toFixed(1)}" y="${(y - 4).toFixed(1)}" fill="${b.selected ? '#fbbf24' : b.hot ? '#34d399' : '#8a97b0'}" font-size="10" text-anchor="middle">${shortNum(b.value)}</text>`;
+    g += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" fill="${b.selected ? '#fbbf24' : b.hot ? '#e5eaf3' : '#8a97b0'}" font-size="11" font-weight="${b.selected ? '700' : '400'}" text-anchor="middle">${b.label}</text>`;
+    if (opts.onSelect) g += `<rect class="hit" data-key="${b.key}" x="${(L + i * slot).toFixed(1)}" y="${T}" width="${slot.toFixed(1)}" height="${ih + B}" fill="transparent" style="cursor:pointer"/>`;
   });
   svg.innerHTML = g;
+  if (opts.onSelect) svg.onclick = ev => { const r = ev.target.closest('.hit'); if (r) opts.onSelect(r.dataset.key); };
 }
 
 function renderDonut(svg, slices, centerLabel, centerValue) {
@@ -359,15 +363,21 @@ function itemHTML(e) {
   </div>`;
 }
 
-let expFilter = 'all', expQuery = '';
+let expFilter = 'all', expQuery = '', expMonth = 'all';
 function renderExpenses() {
   const all = [...state.expenses].sort((a, b) => b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
   const filters = [['all', '全部'], ...Object.entries(GROUPS)];
   $('#exp-filter').innerHTML = filters.map(([k, v]) => `<span class="chip ${expFilter === k ? 'on' : ''}" data-f="${k}">${v}</span>`).join('');
+  const monthsAvail = [...new Set(all.map(e => monthKey(e.date)))].sort().reverse();
+  const sel = $('#exp-month');
+  sel.innerHTML = `<option value="all">全部月份</option>` + monthsAvail.map(k => `<option value="${k}">${monthLabel(k)}</option>`).join('');
+  if (!monthsAvail.includes(expMonth)) expMonth = 'all';
+  sel.value = expMonth;
   const q = expQuery.trim().toLowerCase();
   let list = expFilter === 'all' ? all : all.filter(e => CAT[e.category].group === expFilter);
+  if (expMonth !== 'all') list = list.filter(e => monthKey(e.date) === expMonth);
   if (q) list = list.filter(e => (e.note || '').toLowerCase().includes(q) || CAT[e.category].name.includes(q));
-  $('#exp-count').textContent = (q || expFilter !== 'all') ? `符合 ${list.length} 筆 · 共 ${fmt(sum(list))} 元` : `${all.length} 筆 · 共 ${fmt(sum(all))} 元`;
+  $('#exp-count').textContent = (q || expFilter !== 'all' || expMonth !== 'all') ? `符合 ${list.length} 筆 · 共 ${fmt(sum(list))} 元` : `${all.length} 筆 · 共 ${fmt(sum(all))} 元`;
   if (!list.length) { $('#exp-list').innerHTML = '<div class="empty">沒有符合的支出</div>'; return; }
   const groups = {};
   for (const e of list) (groups[monthKey(e.date)] ||= []).push(e);
@@ -377,19 +387,25 @@ function renderExpenses() {
   }).join('');
 }
 
+let statsMonth = null;   // 點長條圖選到的月份(YYYY-MM),null = 用上方 本月/今年/全部
+function monthLabel(k) { const [y, m] = k.split('-'); return `${y} 年 ${+m} 月`; }
 function renderStats() {
   const inc = $('#stats-inc-price').checked;
-  const period = state.settings.statsPeriod;
-  setSeg('seg-period', period);
+  const period = statsMonth || state.settings.statsPeriod;
+  setSeg('seg-period', statsMonth ? '' : state.settings.statsPeriod);
   const months = monthlyTotals(inc);
   const cur = monthKey(todayStr());
-  renderBarChart($('#chart-month'), months.map(m => ({ label: `${+m.key.slice(5)}月`, value: m.total, hot: m.key === cur })));
+  renderBarChart($('#chart-month'), months.map(m => ({ key: m.key, label: `${+m.key.slice(5)}月`, value: m.total, hot: m.key === cur, selected: m.key === statsMonth })),
+    { onSelect: k => { statsMonth = statsMonth === k ? null : k; renderStats(); } });
   const nonzero = months.filter(m => m.total > 0);
-  $('#chart-month-note').textContent = nonzero.length ? `有支出的月份平均 ${fmt(sum(nonzero.map(m => ({ amount: m.total }))) / nonzero.length)} 元/月${inc ? '' : '(不含車價)'}` : '';
+  $('#chart-month-note').textContent = (nonzero.length ? `有支出的月份平均 ${fmt(sum(nonzero.map(m => ({ amount: m.total }))) / nonzero.length)} 元/月${inc ? '' : '(不含車價)'}。` : '') + '點長條可看該月明細。';
 
   const cats = categoryTotals(inc, period);
   const total = cats.reduce((a, c) => a + c.total, 0);
-  const label = { month: '本月', year: '今年', all: '全部' }[period];
+  const label = statsMonth ? monthLabel(statsMonth) : { month: '本月', year: '今年', all: '全部' }[period];
+  const bar = $('#stats-month-bar');
+  bar.style.display = statsMonth ? '' : 'none';
+  if (statsMonth) { $('#stats-month-label').textContent = `${monthLabel(statsMonth)} · ${fmt(total)} 元`; }
   renderDonut($('#chart-cat'), cats.map(c => ({ value: c.total, color: CAT_COLOR[c.id] })), label + '合計', fmt(total) + ' 元');
   $('#legend-cat').innerHTML = cats.map(c => `<div><span class="l"><i style="background:${CAT_COLOR[c.id]}"></i>${CAT[c.id].icon} ${c.name}</span><span>${fmt(c.total)} <span class="tag">${(c.total / total * 100).toFixed(0)}%</span></span></div>`).join('');
 
@@ -937,7 +953,10 @@ function bind() {
   });
 
   // stats
-  $('#seg-period').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; state.settings.statsPeriod = b.dataset.v; save(); renderStats(); });
+  $('#seg-period').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; statsMonth = null; state.settings.statsPeriod = b.dataset.v; save(); renderStats(); });
+  $('#stats-month-clear').addEventListener('click', () => { statsMonth = null; renderStats(); });
+  $('#stats-month-list').addEventListener('click', () => { if (!statsMonth) return; expMonth = statsMonth; expFilter = 'all'; expQuery = ''; $('#exp-search').value = ''; show('expenses'); });
+  $('#exp-month').addEventListener('change', ev => { expMonth = ev.target.value; renderExpenses(); });
   $('#stats-inc-price').addEventListener('change', renderStats);
 
 
