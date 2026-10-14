@@ -1,7 +1,7 @@
 /* CarLog — 汽車持有成本工具(純靜態 + localStorage) */
 'use strict';
 
-const VERSION = 'v0.7.1';
+const VERSION = 'v0.7.2';
 const STORAGE_KEY = 'carlog.v1';
 
 const CATEGORIES = [
@@ -414,6 +414,10 @@ function renderStats() {
   const cats = categoryTotals(inc, period);
   const total = cats.reduce((a, c) => a + c.total, 0);
   const label = statsMonth ? monthLabel(statsMonth) : { month: '本月', year: '今年', all: '全部' }[period];
+  const msel = $('#stats-month-sel');
+  const monthsAvail = [...new Set(state.expenses.map(e => monthKey(e.date)))].sort().reverse();
+  msel.innerHTML = `<option value="">—</option>` + monthsAvail.map(k => `<option value="${k}">${monthLabel(k)}</option>`).join('');
+  msel.value = statsMonth && monthsAvail.includes(statsMonth) ? statsMonth : '';
   const bar = $('#stats-month-bar');
   bar.style.display = statsMonth ? '' : 'none';
   if (statsMonth) { $('#stats-month-label').textContent = `${monthLabel(statsMonth)} · ${fmt(total)} 元`; }
@@ -967,6 +971,7 @@ function bind() {
   // stats
   $('#seg-period').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; statsMonth = null; state.settings.statsPeriod = b.dataset.v; save(); renderStats(); });
   $('#stats-month-clear').addEventListener('click', () => { statsMonth = null; renderStats(); });
+  $('#stats-month-sel').addEventListener('change', ev => { statsMonth = ev.target.value || null; renderStats(); });
   $('#stats-month-list').addEventListener('click', () => { if (!statsMonth) return; expMonth = statsMonth; expFilter = 'all'; expCategory = null; expQuery = ''; $('#exp-search').value = ''; show('expenses'); });
   $('#exp-month').addEventListener('change', ev => { expMonth = ev.target.value; renderExpenses(); });
   $('#stats-inc-price').addEventListener('change', renderStats);
